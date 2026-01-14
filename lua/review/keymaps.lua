@@ -58,6 +58,7 @@ local function set_buffer_keymaps(bufnr)
   -- Common keymaps
   vim.keymap.set("n", "c", function() comments.list() end, vim.tbl_extend("force", opts, { desc = "List all comments" }))
   vim.keymap.set("n", "C", function() export.to_clipboard() end, vim.tbl_extend("force", opts, { desc = "Export to clipboard" }))
+  vim.keymap.set("n", "S", function() export.to_sidekick() end, vim.tbl_extend("force", opts, { desc = "Send to sidekick" }))
   vim.keymap.set("n", "<C-r>", function() require("review").clear() end, vim.tbl_extend("force", opts, { desc = "Clear all comments" }))
   vim.keymap.set("n", km.next_comment, function() comments.goto_next() end, vim.tbl_extend("force", opts, { desc = "Next comment" }))
   vim.keymap.set("n", km.prev_comment, function() comments.goto_prev() end, vim.tbl_extend("force", opts, { desc = "Previous comment" }))

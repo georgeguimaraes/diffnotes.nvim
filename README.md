@@ -11,6 +11,7 @@ Inspired by [tuicr](https://github.com/agavra/tuicr).
 - Comments persist per branch (stored in `~/.local/share/nvim/review/`)
 - Auto-export comments to clipboard when closing
 - Export format optimized for AI conversations
+- Send comments directly to [sidekick.nvim](https://github.com/folke/sidekick.nvim) for AI chat
 - Built on top of codediff.nvim
 
 ## Requirements
@@ -44,6 +45,7 @@ Using lazy.nvim:
 :Review close        " Close and export comments to clipboard
 :Review export       " Export comments to clipboard
 :Review preview      " Preview exported markdown in split
+:Review sidekick     " Send comments to sidekick.nvim
 :Review list         " List all comments
 :Review clear        " Clear all comments
 :Review toggle       " Toggle readonly/edit mode
@@ -65,6 +67,7 @@ Using lazy.nvim:
 | `]n` | Jump to next comment |
 | `[n` | Jump to previous comment |
 | `C` | Export to clipboard and show preview |
+| `S` | Send comments to sidekick.nvim |
 | `<C-r>` | Clear all comments |
 | `q` | Close and export comments to clipboard |
 

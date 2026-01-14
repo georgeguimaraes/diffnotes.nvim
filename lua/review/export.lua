@@ -82,4 +82,22 @@ function M.preview()
   vim.api.nvim_win_set_buf(0, buf)
 end
 
+function M.to_sidekick()
+  local ok, sidekick_cli = pcall(require, "sidekick.cli")
+  if not ok then
+    notify("sidekick.nvim not installed", vim.log.levels.ERROR)
+    return
+  end
+
+  local count = store.count()
+  if count == 0 then
+    notify("No comments to send", vim.log.levels.WARN)
+    return
+  end
+
+  local markdown = M.generate_markdown()
+  sidekick_cli.send({ msg = markdown })
+  notify(string.format("Sent %d comment(s) to sidekick", count), vim.log.levels.INFO)
+end
+
 return M
