@@ -87,12 +87,28 @@ function M.open()
 
   vim.cmd("DiffviewOpen")
 
-  -- Focus the first file entry instead of staying in file panel
+  -- Focus first file and switch to unified layout
   vim.defer_fn(function()
     local actions = require("diffview.actions")
     actions.select_entry()
     vim.defer_fn(function()
       actions.focus_entry()
+      -- Convert all files to unified (Diff1) layout
+      vim.defer_fn(function()
+        local lib = require("diffview.lib")
+        local view = lib.get_current_view()
+        if not view then return end
+
+        local Diff1 = require("diffview.scene.layouts.diff_1").Diff1
+        local files = {}
+        if view.panel and view.panel.files then
+          if view.panel.files.working then vim.list_extend(files, view.panel.files.working) end
+          if view.panel.files.staged then vim.list_extend(files, view.panel.files.staged) end
+        end
+        for _, entry in ipairs(files) do
+          entry:convert_layout(Diff1)
+        end
+      end, 50)
     end, 50)
   end, 100)
 end
