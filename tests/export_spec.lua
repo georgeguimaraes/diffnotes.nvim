@@ -1,0 +1,35 @@
+local store = require("diffnotes.store")
+local export = require("diffnotes.export")
+
+describe("diffnotes.export", function()
+  before_each(function()
+    store.clear()
+  end)
+
+  describe("generate_markdown", function()
+    it("returns empty message when no comments", function()
+      local md = export.generate_markdown()
+      assert.matches("No comments yet", md)
+    end)
+
+    it("includes file and comment in output", function()
+      store.add("src/main.lua", 10, "issue", "Fix this bug")
+
+      local md = export.generate_markdown()
+      assert.matches("src/main.lua:10", md)
+      assert.matches("%[ISSUE%]", md)
+      assert.matches("Fix this bug", md)
+    end)
+
+    it("formats comments as numbered list", function()
+      store.add("a.lua", 1, "note", "Note A")
+      store.add("b.lua", 1, "issue", "Issue B")
+      store.add("a.lua", 5, "suggestion", "Suggestion A")
+
+      local md = export.generate_markdown()
+      assert.matches("1%. %*%*%[NOTE%]%*%*", md)
+      assert.matches("2%. %*%*%[SUGGESTION%]%*%*", md)
+      assert.matches("3%. %*%*%[ISSUE%]%*%*", md)
+    end)
+  end)
+end)
