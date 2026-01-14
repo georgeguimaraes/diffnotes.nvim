@@ -105,7 +105,7 @@ function M.get_diffview_keymaps()
 
   table.insert(keymaps, {
     "n", "q",
-    function() vim.cmd("DiffviewClose") end,
+    function() require("diffnotes").close() end,
     { desc = "Close diffview" },
   })
 

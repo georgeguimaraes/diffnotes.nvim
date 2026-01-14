@@ -70,7 +70,7 @@ function M.open()
       end,
       { desc = "Previous file" },
     },
-    { "n", "q", function() vim.cmd("DiffviewClose") end, { desc = "Close" } },
+    { "n", "q", function() M.close() end, { desc = "Close" } },
   }
 
   diffview.setup({
@@ -114,6 +114,14 @@ function M.open()
 end
 
 function M.close()
+  -- Export comments to clipboard before closing
+  local count = store.count()
+  if count > 0 then
+    local markdown = export.generate_markdown()
+    vim.fn.setreg("+", markdown)
+    vim.fn.setreg("*", markdown)
+    vim.notify(string.format("diffnotes: Exported %d comment(s) to clipboard", count), vim.log.levels.INFO)
+  end
   vim.cmd("DiffviewClose")
 end
 
