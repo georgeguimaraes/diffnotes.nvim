@@ -64,9 +64,9 @@ Using lazy.nvim:
 | `<S-Tab>` | Previous file |
 | `]n` | Jump to next comment |
 | `[n` | Jump to previous comment |
-| `<C-e>` | Export comments to clipboard |
+| `<C-e>` | Export to clipboard and show preview |
 | `C` | Clear all comments |
-| `q` | Close and copy comments to clipboard |
+| `q` | Close and export comments to clipboard |
 
 **Edit mode** (when `readonly = false`):
 | Key | Action |

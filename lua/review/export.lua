@@ -48,7 +48,10 @@ function M.to_clipboard()
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(markdown, "\n"))
   vim.api.nvim_set_option_value("filetype", "markdown", { buf = buf })
   vim.api.nvim_set_option_value("modifiable", false, { buf = buf })
-  vim.api.nvim_buf_set_name(buf, "[Review Export]")
+  vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = buf })
+
+  -- Remember current window to restore focus after closing
+  local prev_win = vim.api.nvim_get_current_win()
 
   -- Open at bottom with appropriate height
   local line_count = #vim.split(markdown, "\n")
@@ -56,9 +59,12 @@ function M.to_clipboard()
   vim.cmd("botright " .. height .. "split")
   vim.api.nvim_win_set_buf(0, buf)
 
-  -- Map q to close the preview
+  -- Map q to close the preview and restore focus
   vim.keymap.set("n", "q", function()
     vim.api.nvim_win_close(0, true)
+    if vim.api.nvim_win_is_valid(prev_win) then
+      vim.api.nvim_set_current_win(prev_win)
+    end
   end, { buffer = buf, nowait = true })
 
   notify(string.format("Exported %d comment(s) to clipboard", count), vim.log.levels.INFO)
