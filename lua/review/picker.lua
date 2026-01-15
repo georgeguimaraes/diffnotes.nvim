@@ -193,6 +193,9 @@ function M.open(callback)
   popup:mount()
   render_lines()
 
+  -- Focus the popup window
+  vim.api.nvim_set_current_win(popup.winid)
+
   -- Keymaps using nui's map method
   local map_opts = { noremap = true, nowait = true }
   popup:map("n", "<Space>", toggle_selection, map_opts)
