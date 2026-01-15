@@ -136,6 +136,17 @@ local function set_buffer_keymaps(bufnr)
     require("review.github.submit").show_submit_ui()
   end, vim.tbl_extend("force", opts, { desc = "Submit review to GitHub" }))
 
+  -- Open PR in browser
+  vim.keymap.set("n", "go", function()
+    local github = require("review.github")
+    local pr = github.get_current_pr()
+    if pr then
+      vim.fn.system(string.format("gh pr view %d --web", pr.number))
+    else
+      vim.notify("No active PR review", vim.log.levels.WARN, { title = "Review" })
+    end
+  end, vim.tbl_extend("force", opts, { desc = "Open PR in browser" }))
+
   -- Close and export
   vim.keymap.set("n", "q", function() require("review").close() end, vim.tbl_extend("force", opts, { desc = "Close" }))
 
