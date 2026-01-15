@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.1.0](https://github.com/georgeguimaraes/review.nvim/compare/v1.0.0...v1.1.0) (2026-01-15)
+
+
+### Features
+
+* add commit picker and auto-jump to first hunk ([d828f63](https://github.com/georgeguimaraes/review.nvim/commit/d828f63c5ca2d50f8adaebfb33015cfb25fd0708))
+* add sidekick.nvim integration ([1c183ee](https://github.com/georgeguimaraes/review.nvim/commit/1c183eef5a1ee55f086806e2f7131de480d6c28f))
+* change keymaps - C for export, C-r for clear ([29f9f8b](https://github.com/georgeguimaraes/review.nvim/commit/29f9f8b78cd80efe4e5ac93979e859720174b69e))
+
+
+### Bug Fixes
+
+* focus picker window on open ([507b111](https://github.com/georgeguimaraes/review.nvim/commit/507b11119e4285061d918d5c36c0ddce9c2111c9))
+* mark release PR as tagged after release creation ([b2a17b0](https://github.com/georgeguimaraes/review.nvim/commit/b2a17b03d888d9b2c4dcdba6c05f944eea748ff1))
+* picker keymaps and remove select all option ([23c850b](https://github.com/georgeguimaraes/review.nvim/commit/23c850b362e88910ab47ee02173db684de530340))
+
+
+### Miscellaneous
+
+* add Apache 2.0 license ([54c7aca](https://github.com/georgeguimaraes/review.nvim/commit/54c7aca13227c4eee82f0a59c33f8b34d54017b0))
+* add release-please config and manifest files ([71ad52a](https://github.com/georgeguimaraes/review.nvim/commit/71ad52acd8b96d51fd94d463cce2b8cb4a1b033b))
+
+
+### Documentation
+
+* add keymap examples to README ([f5e49ec](https://github.com/georgeguimaraes/review.nvim/commit/f5e49ec1b36f072a37414472df3b587687c43868))
+* simplify config with opts ([4cccd98](https://github.com/georgeguimaraes/review.nvim/commit/4cccd98fa414725950811bf6c892a540d78a9e26))
+
+
+### Performance Improvements
+
+* only update changed line on selection toggle ([c2f7285](https://github.com/georgeguimaraes/review.nvim/commit/c2f7285d8b2ed3847e9ff8c82244be2267be2654))
+
 ## 1.0.0 (2026-01-14)
 
 
