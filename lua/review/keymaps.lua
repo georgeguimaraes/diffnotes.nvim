@@ -146,4 +146,13 @@ function M.clear_keymaps()
   keymapped_buffers = {}
 end
 
+-- Cleanup augroup when session closes
+function M.cleanup()
+  if augroup then
+    vim.api.nvim_del_augroup_by_id(augroup)
+    augroup = nil
+  end
+  keymapped_buffers = {}
+end
+
 return M

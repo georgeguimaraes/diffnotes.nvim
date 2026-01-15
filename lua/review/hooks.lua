@@ -130,6 +130,7 @@ end
 -- Called when codediff session is closed
 function M.on_session_closed()
   current_tabpage = nil
+  require("review.keymaps").cleanup()
 end
 
 -- Called when file changes in explorer mode
