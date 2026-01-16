@@ -6,7 +6,21 @@ vim.g.loaded_review = true
 local subcommands = {
   open = { fn = function() require("review").open() end, desc = "Open codediff with review" },
   commits = { fn = function() require("review").open_commits() end, desc = "Select commits to review" },
-  PR = { fn = function(args) require("review").open_pr(args[2] and tonumber(args[2])) end, desc = "Review a GitHub PR" },
+  PR = {
+    fn = function(args)
+      if args[2] then
+        local pr_number = tonumber(args[2])
+        if not pr_number then
+          vim.notify("Invalid PR number: " .. args[2], vim.log.levels.ERROR, { title = "Review" })
+          return
+        end
+        require("review").open_pr(pr_number)
+      else
+        require("review").open_pr()
+      end
+    end,
+    desc = "Review a GitHub PR",
+  },
   submit = { fn = function() require("review.github.submit").show_submit_ui() end, desc = "Submit review to GitHub" },
   close = { fn = function() require("review").close() end, desc = "Close and export to clipboard" },
   export = { fn = function() require("review").export() end, desc = "Export comments to clipboard" },

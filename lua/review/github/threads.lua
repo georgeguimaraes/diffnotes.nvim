@@ -548,7 +548,7 @@ function M.prev_thread()
 
   -- Wrap to last
   if #threads > 0 then
-    vim.api.nvim_win_set_cursor(0, { threads[1].line, 0 })
+    vim.api.nvim_win_set_cursor(0, { threads[#threads].line, 0 })
   end
 end
 
