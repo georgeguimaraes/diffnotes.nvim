@@ -18,7 +18,7 @@ local type_to_event = {
 
 ---Convert local comments to GitHub review comments format
 ---@param comments table[]
----@return { path: string, line: number, body: string }[]
+---@return { path: string, line: number, side: string, body: string }[]
 local function convert_comments(comments)
   local github_comments = {}
 
@@ -29,6 +29,7 @@ local function convert_comments(comments)
     table.insert(github_comments, {
       path = comment.file,
       line = comment.line,
+      side = "RIGHT", -- Comments on new changes (HEAD side of the diff)
       body = prefix .. comment.text,
     })
   end
@@ -142,6 +143,9 @@ function M.show_submit_ui()
   })
 
   submit_popup:mount()
+
+  -- Ensure popup has focus
+  vim.api.nvim_set_current_win(submit_popup.winid)
 
   local buf = submit_popup.bufnr
   vim.api.nvim_set_option_value("modifiable", true, { buf = buf })

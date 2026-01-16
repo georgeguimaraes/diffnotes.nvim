@@ -12,13 +12,25 @@ local popup = nil
 ---@type string
 local search_query = ""
 
+-- PR icons (nerdfonts)
+local PR_ICON = " " -- nf-oct-git_pull_request
+local DRAFT_ICON = " " -- nf-oct-git_pull_request_draft
+local BRANCH_ICON = "" -- nf-oct-git_branch
+
 local function format_line(pr)
-  local draft = pr.isDraft and "[draft] " or ""
+  local icon = pr.isDraft and DRAFT_ICON or PR_ICON
+  local draft_tag = pr.isDraft and " [draft]" or ""
+  local title = pr.title
+  if #title > 50 then
+    title = title:sub(1, 47) .. "..."
+  end
   local line = string.format(
-    "#%-4d %s%s (%s → %s) @%s",
+    "%s #%-4d %s%s  %s %s → %s  @%s",
+    icon,
     pr.number,
-    draft,
-    pr.title,
+    title,
+    draft_tag,
+    BRANCH_ICON,
     pr.headRefName,
     pr.baseRefName,
     pr.author.login
@@ -27,6 +39,49 @@ local function format_line(pr)
     line = line:sub(1, 117) .. "..."
   end
   return line
+end
+
+---Get highlight ranges for a PR line
+---@param pr table
+---@param line string
+---@return table[] Array of {col_start, col_end, hl_group}
+local function get_line_highlights(pr, line)
+  local highlights = {}
+  local icon = pr.isDraft and DRAFT_ICON or PR_ICON
+
+  -- Icon highlight
+  local icon_end = #icon + 1
+  table.insert(highlights, { 0, icon_end, pr.isDraft and "ReviewPRDraft" or "ReviewPRIcon" })
+
+  -- PR number highlight
+  local num_str = string.format("#%-4d", pr.number)
+  local num_start = icon_end
+  local num_end = num_start + #num_str + 1
+  table.insert(highlights, { num_start, num_end, "ReviewPRNumber" })
+
+  -- Find branch section (after the branch icon)
+  local branch_start = line:find(BRANCH_ICON)
+  if branch_start then
+    -- Branch icon and names
+    local arrow_pos = line:find("→", branch_start)
+    if arrow_pos then
+      local author_pos = line:find("@", arrow_pos)
+      if author_pos then
+        table.insert(highlights, { branch_start - 1, author_pos - 3, "ReviewPRBranch" })
+        table.insert(highlights, { author_pos - 1, #line, "ReviewPRAuthor" })
+      end
+    end
+  end
+
+  -- Draft tag highlight
+  if pr.isDraft then
+    local draft_start = line:find("%[draft%]")
+    if draft_start then
+      table.insert(highlights, { draft_start - 1, draft_start + 6, "ReviewPRDraft" })
+    end
+  end
+
+  return highlights
 end
 
 local function filter_prs()
@@ -59,17 +114,20 @@ local function render_lines()
 
   local buf = popup.bufnr
   local lines = {}
+  local pr_lines = {} -- Store formatted lines with their PRs for highlighting
 
   -- Search prompt line
-  local prompt = "/ " .. search_query
+  local prompt = " / " .. search_query
   if search_query == "" then
-    prompt = "/ (type to search)"
+    prompt = " / (type to search)"
   end
   table.insert(lines, prompt)
-  table.insert(lines, string.rep("─", 60))
+  table.insert(lines, string.rep("─", 80))
 
   for _, pr in ipairs(filtered_prs) do
-    table.insert(lines, format_line(pr))
+    local line = format_line(pr)
+    table.insert(lines, line)
+    table.insert(pr_lines, { pr = pr, line = line })
   end
 
   if #filtered_prs == 0 and #all_prs > 0 then
@@ -80,11 +138,22 @@ local function render_lines()
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.api.nvim_set_option_value("modifiable", false, { buf = buf })
 
-  -- Highlight search line
+  -- Apply highlights
   local ns_id = vim.api.nvim_create_namespace("review_pr_picker")
   vim.api.nvim_buf_clear_namespace(buf, ns_id, 0, -1)
-  vim.api.nvim_buf_add_highlight(buf, ns_id, "Comment", 0, 0, -1)
+
+  -- Search prompt highlight
+  vim.api.nvim_buf_add_highlight(buf, ns_id, "ReviewPRSearch", 0, 0, -1)
   vim.api.nvim_buf_add_highlight(buf, ns_id, "Comment", 1, 0, -1)
+
+  -- PR line highlights
+  for i, pr_line in ipairs(pr_lines) do
+    local line_idx = i + 1 -- +2 for header lines, -1 for 0-based = +1
+    local highlights = get_line_highlights(pr_line.pr, pr_line.line)
+    for _, hl in ipairs(highlights) do
+      pcall(vim.api.nvim_buf_add_highlight, buf, ns_id, hl[3], line_idx, hl[1], hl[2])
+    end
+  end
 
   -- Position cursor on first PR (line 3)
   if #filtered_prs > 0 then

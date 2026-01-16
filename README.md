@@ -92,9 +92,9 @@ Using lazy.nvim:
 | Key | Action |
 |-----|--------|
 | `gC` | Show GitHub thread at cursor |
-| `gn` | Start new GitHub thread at cursor |
+| `ga` | Start new GitHub thread at cursor |
 | `gS` | Start GitHub suggestion (one-click apply) |
-| `gn` (visual) | Multi-line comment on selection |
+| `ga` (visual) | Multi-line comment on selection |
 | `gS` (visual) | Multi-line suggestion on selection |
 | `gp` | Show PR description |
 | `]t` | Jump to next GitHub thread |
@@ -225,16 +225,16 @@ Existing PR comments show as purple `◆` signs (or gray `✓` if resolved). Pre
 
 ### Starting New Threads
 
-Use `gn` to start a new comment thread at the cursor line, or `gS` to start a code suggestion (uses GitHub's suggestion syntax for one-click apply).
+Use `ga` to start a new comment thread at the cursor line, or `gS` to start a code suggestion (uses GitHub's suggestion syntax for one-click apply).
 
 ### Multi-line Comments
 
-Select lines in visual mode, then press `gn` for a multi-line comment or `gS` for a multi-line suggestion. GitHub will highlight the entire range in the PR.
+Select lines in visual mode, then press `ga` for a multi-line comment or `gS` for a multi-line suggestion. GitHub will highlight the entire range in the PR.
 
 ### Quick vs Batch Review
 
 Two workflows are supported:
-- **Quick ad-hoc comments**: Use `gn`/`gS` to post comments immediately to GitHub
+- **Quick ad-hoc comments**: Use `ga`/`gS` to post comments immediately to GitHub
 - **Batch review**: Use `i` to add local annotations, then `gs` to submit them all as a single review
 
 ### Submitting Reviews

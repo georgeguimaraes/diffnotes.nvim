@@ -53,16 +53,19 @@ function M._open_pr(number)
     return
   end
 
-  -- Checkout PR branch
-  vim.notify(string.format("Checking out PR #%d...", number), vim.log.levels.INFO, { title = "Review" })
-  local ok, err = api.checkout_pr(number)
+  -- Fetch PR refs without checking out (keeps current branch clean)
+  vim.notify(string.format("Fetching PR #%d...", number), vim.log.levels.INFO, { title = "Review" })
+  local ok, err = api.fetch_pr(number)
   if not ok then
-    vim.notify(string.format("Failed to checkout PR: %s", err or "unknown error"), vim.log.levels.ERROR, { title = "Review" })
+    vim.notify(string.format("Failed to fetch PR: %s", err or "unknown error"), vim.log.levels.ERROR, { title = "Review" })
     return
   end
 
-  -- Calculate merge-base for accurate diff
-  local merge_base = api.get_merge_base("origin/" .. pr.base_ref, "HEAD")
+  -- Also fetch the base branch to ensure we have it
+  vim.fn.system(string.format("git fetch origin %s 2>&1", pr.base_ref))
+
+  -- Calculate merge-base for accurate diff using the fetched refs
+  local merge_base = api.get_merge_base("origin/" .. pr.base_ref, pr.head_sha)
   if not merge_base then
     -- Fallback to base SHA if merge-base fails
     merge_base = pr.base_sha

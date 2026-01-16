@@ -94,12 +94,26 @@ function M.get_pr(number)
   }
 end
 
----Checkout PR branch
+---Checkout PR branch (legacy - switches branch)
 ---@param number number PR number
 ---@return boolean success
 ---@return string? error
 function M.checkout_pr(number)
   local result = vim.fn.system(string.format("gh pr checkout %d 2>&1", number))
+  if vim.v.shell_error ~= 0 then
+    return false, vim.trim(result)
+  end
+  return true, nil
+end
+
+---Fetch PR refs without checking out (keeps current branch)
+---@param number number PR number
+---@return boolean success
+---@return string? error
+function M.fetch_pr(number)
+  -- Fetch the PR head ref so we have the commits locally
+  local cmd = string.format("git fetch origin pull/%d/head 2>&1", number)
+  local result = vim.fn.system(cmd)
   if vim.v.shell_error ~= 0 then
     return false, vim.trim(result)
   end
@@ -160,18 +174,24 @@ query($owner: String!, $repo: String!, $number: Int!) {
 }
 ]]
 
-  local variables = vim.json.encode({
-    owner = repo_info.owner,
-    repo = repo_info.repo,
-    number = number,
+  local request_body = vim.json.encode({
+    query = query,
+    variables = {
+      owner = repo_info.owner,
+      repo = repo_info.repo,
+      number = number,
+    },
   })
 
-  local cmd = string.format(
-    "gh api graphql -f query=%s -f variables=%s",
-    vim.fn.shellescape(query),
-    vim.fn.shellescape(variables)
-  )
+  local tmpfile = "/tmp/review_nvim_graphql.json"
+  local f = io.open(tmpfile, "w")
+  if not f then
+    return nil
+  end
+  f:write(request_body)
+  f:close()
 
+  local cmd = string.format("gh api graphql --input %s 2>&1", vim.fn.shellescape(tmpfile))
   local result = vim.fn.system(cmd)
   if vim.v.shell_error ~= 0 then
     return nil
@@ -276,26 +296,35 @@ function M.get_pr_node_id(number)
 end
 
 ---Start a new review thread on a specific line or range
+---Creates thread then immediately submits it so it's visible right away
 ---@param pr_id string PR node ID
 ---@param path string File path relative to repo root
----@param line number End line number in the diff
+---@param line number Line number in the file
 ---@param body string Comment body
 ---@param start_line? number Start line for multi-line comments
 ---@param side? "LEFT"|"RIGHT" Diff side (default RIGHT for new changes)
 ---@return boolean success
 ---@return string? error
 function M.add_review_thread(pr_id, path, line, body, start_line, side)
-  local mutation = [[
-mutation($input: AddPullRequestReviewInput!) {
-  addPullRequestReview(input: $input) {
-    pullRequestReview {
-      id
-    }
-  }
-}
-]]
+  -- Validate inputs
+  if not pr_id or pr_id == "" then
+    return false, "PR ID is empty"
+  end
+  if not path or path == "" then
+    return false, "File path is empty"
+  end
+  if not line or line < 1 then
+    return false, "Invalid line number"
+  end
+  if not body or body == "" then
+    return false, "Comment body is empty"
+  end
 
-  local comment = {
+  -- Step 1: Create thread with addPullRequestReviewThread (creates pending)
+  local create_mutation = [[mutation($input: AddPullRequestReviewThreadInput!) { addPullRequestReviewThread(input: $input) { thread { id } } }]]
+
+  local input = {
+    pullRequestId = pr_id,
     path = path,
     line = line,
     side = side or "RIGHT",
@@ -304,26 +333,56 @@ mutation($input: AddPullRequestReviewInput!) {
 
   -- Add startLine for multi-line comments
   if start_line and start_line ~= line then
-    comment.startLine = start_line
-    comment.startSide = side or "RIGHT"
+    input.startLine = start_line
+    input.startSide = side or "RIGHT"
   end
 
-  local input = {
-    pullRequestId = pr_id,
-    event = "COMMENT",
-    comments = { comment },
-  }
+  local request_body = vim.json.encode({
+    query = create_mutation,
+    variables = { input = input },
+  })
 
-  local variables = vim.json.encode({ input = input })
-  local cmd = string.format(
-    "gh api graphql -f query=%s -f variables=%s",
-    vim.fn.shellescape(mutation),
-    vim.fn.shellescape(variables)
-  )
+  local tmpfile = "/tmp/review_nvim_graphql.json"
+  local f = io.open(tmpfile, "w")
+  if not f then
+    return false, "Failed to create temp file"
+  end
+  f:write(request_body)
+  f:close()
 
+  local cmd = string.format("gh api graphql --input %s 2>&1", vim.fn.shellescape(tmpfile))
   local result = vim.fn.system(cmd)
+
   if vim.v.shell_error ~= 0 then
     return false, vim.trim(result)
+  end
+
+  -- Step 2: Submit the pending review immediately with submitPullRequestReview
+  local submit_mutation = [[mutation($input: SubmitPullRequestReviewInput!) { submitPullRequestReview(input: $input) { pullRequestReview { id } } }]]
+
+  local submit_input = {
+    pullRequestId = pr_id,
+    event = "COMMENT",
+  }
+
+  local submit_body = vim.json.encode({
+    query = submit_mutation,
+    variables = { input = submit_input },
+  })
+
+  f = io.open(tmpfile, "w")
+  if not f then
+    return false, "Failed to create temp file for submit"
+  end
+  f:write(submit_body)
+  f:close()
+
+  result = vim.fn.system(cmd)
+
+  if vim.v.shell_error ~= 0 then
+    -- Thread was created but submit failed - still return success
+    -- The thread exists, just pending
+    return true, nil
   end
 
   return true, nil

@@ -92,6 +92,16 @@ local function set_buffer_keymaps(bufnr)
     threads.show_thread_at_cursor()
   end, vim.tbl_extend("force", opts, { desc = "Show GitHub thread" }))
 
+  -- Enter on thread line opens the thread popup
+  vim.keymap.set("n", "<CR>", function()
+    local threads = require("review.github.threads")
+    local hooks = require("review.hooks")
+    local file, line = hooks.get_cursor_position()
+    if file and line and threads.get_at_line(file, line) then
+      threads.show_thread_at_cursor()
+    end
+  end, vim.tbl_extend("force", opts, { desc = "Open thread at cursor" }))
+
   vim.keymap.set("n", "]t", function()
     local threads = require("review.github.threads")
     threads.next_thread()
@@ -102,7 +112,7 @@ local function set_buffer_keymaps(bufnr)
     threads.prev_thread()
   end, vim.tbl_extend("force", opts, { desc = "Previous GitHub thread" }))
 
-  vim.keymap.set("n", "gn", function()
+  vim.keymap.set("n", "ga", function()
     local threads = require("review.github.threads")
     threads.start_new_thread()
   end, vim.tbl_extend("force", opts, { desc = "Start new GitHub thread" }))
@@ -113,7 +123,7 @@ local function set_buffer_keymaps(bufnr)
   end, vim.tbl_extend("force", opts, { desc = "Start GitHub suggestion" }))
 
   -- Visual mode for multi-line comments/suggestions
-  vim.keymap.set("v", "gn", function()
+  vim.keymap.set("v", "ga", function()
     vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "n", false)
     local threads = require("review.github.threads")
     threads.start_multiline_thread()
@@ -136,16 +146,23 @@ local function set_buffer_keymaps(bufnr)
     require("review.github.submit").show_submit_ui()
   end, vim.tbl_extend("force", opts, { desc = "Submit review to GitHub" }))
 
-  -- Open PR in browser
+  -- Open in browser (thread if on thread line, otherwise PR)
   vim.keymap.set("n", "go", function()
+    local threads = require("review.github.threads")
+    -- Try to open thread first
+    if threads.open_thread_in_browser() then
+      return
+    end
+    -- Otherwise open PR
     local github = require("review.github")
     local pr = github.get_current_pr()
     if pr then
       vim.fn.system(string.format("gh pr view %d --web", pr.number))
+      vim.notify("Opened PR in browser", vim.log.levels.INFO, { title = "Review" })
     else
       vim.notify("No active PR review", vim.log.levels.WARN, { title = "Review" })
     end
-  end, vim.tbl_extend("force", opts, { desc = "Open PR in browser" }))
+  end, vim.tbl_extend("force", opts, { desc = "Open in browser" }))
 
   -- Close and export
   vim.keymap.set("n", "q", function() require("review").close() end, vim.tbl_extend("force", opts, { desc = "Close" }))

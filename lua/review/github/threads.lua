@@ -4,6 +4,13 @@ local api = require("review.github.api")
 local Popup = require("nui.popup")
 
 local ns_id = vim.api.nvim_create_namespace("review_github")
+local hover_ns_id = vim.api.nvim_create_namespace("review_github_hover")
+
+-- Track current hover state
+local current_hover = {
+  bufnr = nil,
+  line = nil,
+}
 
 ---@class GitHubThread
 ---@field id string Thread ID
@@ -92,79 +99,6 @@ local function normalize_path(path)
   return path
 end
 
----Render GitHub threads for a buffer
----@param bufnr number
-function M.render_for_buffer(bufnr)
-  if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
-    return
-  end
-
-  local bufname = vim.api.nvim_buf_get_name(bufnr)
-  if not bufname or bufname == "" then
-    return
-  end
-
-  -- Extract file path
-  local file
-  if bufname:match("^codediff://") then
-    local path = bufname:match("^codediff://[^/]+/(.+)%?") or bufname:match("^codediff://[^/]+/(.+)$")
-    if path then
-      file = normalize_path(path)
-    end
-  else
-    file = normalize_path(vim.fn.fnamemodify(bufname, ":."))
-  end
-
-  if not file then
-    return
-  end
-
-  local threads = M.get_for_file(file)
-
-  -- Clear previous GitHub thread marks
-  vim.api.nvim_buf_clear_namespace(bufnr, ns_id, 0, -1)
-
-  for _, thread in ipairs(threads) do
-    local line = thread.line - 1
-    if line >= 0 then
-      local icon = thread.is_resolved and "✓" or "◆"
-      local hl = thread.is_resolved and "ReviewGitHubResolved" or "ReviewGitHubThread"
-      local line_hl = thread.is_outdated and "ReviewGitHubOutdated" or nil
-
-      -- Resolved threads: just show sign, no virtual text (collapsed)
-      if thread.is_resolved then
-        pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_id, line, 0, {
-          sign_text = icon,
-          sign_hl_group = hl,
-          line_hl_group = line_hl,
-        })
-      else
-        -- Open threads: show preview text
-        local preview = ""
-        if thread.comments and #thread.comments > 0 then
-          local first = thread.comments[1]
-          local first_line = vim.split(first.body, "\n")[1] or ""
-          preview = string.format("@%s: %s", first.author, first_line)
-          if #preview > 60 then
-            preview = preview:sub(1, 57) .. "..."
-          end
-          if #thread.comments > 1 then
-            preview = preview .. string.format(" (+%d)", #thread.comments - 1)
-          end
-        end
-
-        pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_id, line, 0, {
-          sign_text = icon,
-          sign_hl_group = hl,
-          line_hl_group = line_hl,
-          virt_text = { { "  " .. preview, "ReviewGitHubVirtText" } },
-          virt_text_pos = "eol",
-        })
-      end
-    end
-  end
-end
-
 ---Format relative time
 ---@param iso_time string
 ---@return string
@@ -200,6 +134,243 @@ local function format_relative_time(iso_time)
     local weeks = math.floor(diff / 604800)
     return weeks == 1 and "1 week ago" or weeks .. " weeks ago"
   end
+end
+
+---Get file path for a buffer using lifecycle API (consistent with hooks.get_cursor_position)
+---@param bufnr number
+---@return string|nil
+local function get_file_for_buffer(bufnr)
+  local ok, lifecycle = pcall(require, "codediff.ui.lifecycle")
+  if not ok then
+    return nil
+  end
+
+  local tabpage = vim.api.nvim_get_current_tabpage()
+  local sess = lifecycle.get_session(tabpage)
+  if not sess then
+    return nil
+  end
+
+  local orig_path, mod_path = lifecycle.get_paths(tabpage)
+  local orig_buf, mod_buf = lifecycle.get_buffers(tabpage)
+
+  -- Determine which file based on buffer
+  local file_path
+  if bufnr == orig_buf then
+    file_path = orig_path
+  elseif bufnr == mod_buf then
+    file_path = mod_path
+  end
+
+  if not file_path then
+    return nil
+  end
+
+  -- Get relative path using git context
+  local git_ctx = lifecycle.get_git_context(tabpage)
+  if git_ctx and git_ctx.git_root then
+    local abs_path = vim.fn.fnamemodify(file_path, ":p")
+    local rel_path = abs_path:gsub("^" .. vim.pesc(git_ctx.git_root) .. "/", "")
+    return normalize_path(rel_path)
+  end
+
+  return normalize_path(vim.fn.fnamemodify(file_path, ":."))
+end
+
+---Render GitHub threads for a buffer
+---@param bufnr number
+function M.render_for_buffer(bufnr)
+  if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+    return
+  end
+
+  -- Try to get file path from lifecycle API first (consistent with hooks.get_cursor_position)
+  local file = get_file_for_buffer(bufnr)
+
+  -- Fallback to buffer name parsing if lifecycle API fails
+  if not file then
+    local bufname = vim.api.nvim_buf_get_name(bufnr)
+    if not bufname or bufname == "" then
+      return
+    end
+
+    -- Extract file path
+    if bufname:match("^codediff://") then
+      local path = bufname:match("^codediff://[^/]+/(.+)%?") or bufname:match("^codediff://[^/]+/(.+)$")
+      if path then
+        file = normalize_path(path)
+      end
+    else
+      file = normalize_path(vim.fn.fnamemodify(bufname, ":."))
+    end
+  end
+
+  if not file then
+    return
+  end
+
+  local threads = M.get_for_file(file)
+
+  -- Clear previous GitHub thread marks
+  vim.api.nvim_buf_clear_namespace(bufnr, ns_id, 0, -1)
+
+  for _, thread in ipairs(threads) do
+    local line = thread.line - 1
+    if line >= 0 then
+      local icon = thread.is_resolved and "✓" or "◆"
+      local hl = thread.is_resolved and "ReviewGitHubResolved" or "ReviewGitHubThread"
+      local line_hl = thread.is_outdated and "ReviewGitHubOutdated" or nil
+
+      -- Just show gutter sign - thread details shown on hover
+      local reply_count = thread.comments and #thread.comments or 0
+      local virt_text = nil
+      if reply_count > 1 then
+        virt_text = { { string.format(" 💬 %d", reply_count), "ReviewGitHubVirtText" } }
+      elseif reply_count == 1 then
+        virt_text = { { " 💬", "ReviewGitHubVirtText" } }
+      end
+
+      pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_id, line, 0, {
+        sign_text = icon,
+        sign_hl_group = hl,
+        line_hl_group = line_hl,
+        virt_text = virt_text,
+        virt_text_pos = "eol",
+      })
+    end
+  end
+end
+
+---Show thread details on hover (called on CursorHold)
+---@param bufnr number
+---@param line number 1-indexed line number
+function M.show_hover(bufnr, line)
+  -- Clear previous hover
+  M.clear_hover()
+
+  local file = get_file_for_buffer(bufnr)
+  if not file then
+    return
+  end
+
+  local thread = M.get_at_line(file, line)
+  if not thread or not thread.comments or #thread.comments == 0 then
+    return
+  end
+
+  current_hover.bufnr = bufnr
+  current_hover.line = line
+
+  local first = thread.comments[1]
+  local author = first.author or "unknown"
+  local time_ago = format_relative_time(first.created_at)
+  local icon = thread.is_resolved and "✓" or "◆"
+  local hl = thread.is_resolved and "ReviewGitHubResolved" or "ReviewGitHubThread"
+
+  -- Build virtual lines for hover display
+  local virt_lines = {}
+
+  -- Get first comment body lines (limit to 5 lines)
+  local body_lines = vim.split(first.body, "\n")
+  local display_lines = {}
+  for i = 1, math.min(5, #body_lines) do
+    local l = body_lines[i]
+    if #l > 60 then
+      l = l:sub(1, 57) .. "..."
+    end
+    table.insert(display_lines, l)
+  end
+  if #body_lines > 5 then
+    table.insert(display_lines, "...")
+  end
+
+  -- Calculate box width
+  local header_text = string.format("%s @%s • %s", icon, author, time_ago)
+  local max_width = vim.fn.strdisplaywidth(header_text)
+  for _, l in ipairs(display_lines) do
+    max_width = math.max(max_width, vim.fn.strdisplaywidth(l))
+  end
+  local reply_text = ""
+  if #thread.comments > 1 then
+    reply_text = string.format("💬 %d replies (Enter to view)", #thread.comments - 1)
+    max_width = math.max(max_width, vim.fn.strdisplaywidth(reply_text))
+  end
+  local content_width = math.max(max_width, 20)
+
+  -- Top border
+  local header_padding = content_width - vim.fn.strdisplaywidth(header_text) + 1
+  local top_line = "╭─" .. header_text .. string.rep("─", math.max(0, header_padding)) .. "╮"
+  table.insert(virt_lines, { { top_line, hl } })
+
+  -- Body lines
+  for _, body_line in ipairs(display_lines) do
+    local text_width = vim.fn.strdisplaywidth(body_line)
+    local padding = content_width - text_width
+    local content = "│ " .. body_line .. string.rep(" ", padding) .. " │"
+    table.insert(virt_lines, { { content, hl } })
+  end
+
+  -- Reply count
+  if reply_text ~= "" then
+    local reply_width = vim.fn.strdisplaywidth(reply_text)
+    local reply_padding = content_width - reply_width
+    local reply_line = "│ " .. reply_text .. string.rep(" ", reply_padding) .. " │"
+    table.insert(virt_lines, { { reply_line, "ReviewGitHubVirtText" } })
+  end
+
+  -- Bottom border
+  local bottom = "╰" .. string.rep("─", content_width + 2) .. "╯"
+  table.insert(virt_lines, { { bottom, hl } })
+
+  -- Show as virtual lines below the current line
+  pcall(vim.api.nvim_buf_set_extmark, bufnr, hover_ns_id, line - 1, 0, {
+    virt_lines = virt_lines,
+    virt_lines_above = false,
+  })
+end
+
+---Clear hover display
+function M.clear_hover()
+  if current_hover.bufnr and vim.api.nvim_buf_is_valid(current_hover.bufnr) then
+    vim.api.nvim_buf_clear_namespace(current_hover.bufnr, hover_ns_id, 0, -1)
+  end
+  current_hover.bufnr = nil
+  current_hover.line = nil
+end
+
+---Setup hover autocmds for a buffer
+---@param bufnr number
+function M.setup_hover(bufnr)
+  local group = vim.api.nvim_create_augroup("ReviewGitHubHover" .. bufnr, { clear = true })
+
+  vim.api.nvim_create_autocmd("CursorHold", {
+    group = group,
+    buffer = bufnr,
+    callback = function()
+      local cursor = vim.api.nvim_win_get_cursor(0)
+      M.show_hover(bufnr, cursor[1])
+    end,
+  })
+
+  vim.api.nvim_create_autocmd("CursorMoved", {
+    group = group,
+    buffer = bufnr,
+    callback = function()
+      -- Clear hover when cursor moves to a different line
+      local cursor = vim.api.nvim_win_get_cursor(0)
+      if current_hover.line and cursor[1] ~= current_hover.line then
+        M.clear_hover()
+      end
+    end,
+  })
+
+  vim.api.nvim_create_autocmd("BufLeave", {
+    group = group,
+    buffer = bufnr,
+    callback = function()
+      M.clear_hover()
+    end,
+  })
 end
 
 ---Format reactions for display
@@ -331,6 +502,9 @@ function M.show_thread(thread)
   })
 
   thread_popup:mount()
+
+  -- Ensure popup has focus
+  vim.api.nvim_set_current_win(thread_popup.winid)
 
   local buf = thread_popup.bufnr
   vim.api.nvim_set_option_value("modifiable", true, { buf = buf })
@@ -498,9 +672,11 @@ function M.render_all()
   local orig_buf, mod_buf = hooks.get_buffers()
   if orig_buf then
     M.render_for_buffer(orig_buf)
+    M.setup_hover(orig_buf)
   end
   if mod_buf then
     M.render_for_buffer(mod_buf)
+    M.setup_hover(mod_buf)
   end
 end
 
@@ -552,48 +728,6 @@ function M.prev_thread()
   end
 end
 
----Start a new thread at cursor position
-function M.start_new_thread()
-  local hooks = require("review.hooks")
-  local file, line = hooks.get_cursor_position()
-
-  if not file or not line then
-    vim.notify("Could not determine cursor position", vim.log.levels.WARN, { title = "Review" })
-    return
-  end
-
-  local github = require("review.github")
-  local pr = github.get_current_pr()
-  if not pr then
-    vim.notify("No active PR review", vim.log.levels.ERROR, { title = "Review" })
-    return
-  end
-
-  local pr_node_id = api.get_pr_node_id(pr.number)
-  if not pr_node_id then
-    vim.notify("Failed to get PR ID", vim.log.levels.ERROR, { title = "Review" })
-    return
-  end
-
-  vim.ui.input({ prompt = "New thread comment: " }, function(input)
-    if not input or input == "" then
-      return
-    end
-
-    local ok, err = api.add_review_thread(pr_node_id, file, line, input)
-    if not ok then
-      vim.notify("Failed to create thread: " .. (err or "unknown error"), vim.log.levels.ERROR, { title = "Review" })
-      return
-    end
-
-    vim.notify("Thread created", vim.log.levels.INFO, { title = "Review" })
-
-    -- Refresh threads
-    M.fetch(pr.number)
-    M.render_all()
-  end)
-end
-
 ---Get the current line content from buffer
 ---@return string|nil
 local function get_current_line_content()
@@ -604,14 +738,21 @@ local function get_current_line_content()
   return lines[1]
 end
 
----Start a new suggestion thread at cursor position
----Uses GitHub's suggestion syntax for one-click apply
-function M.start_suggestion_thread()
+---Start a new thread at cursor position
+---@param default_type? "note"|"suggestion" Default type (default: "note")
+function M.start_new_thread(default_type)
   local hooks = require("review.hooks")
+  local popup = require("review.popup")
   local file, line = hooks.get_cursor_position()
 
   if not file or not line then
     vim.notify("Could not determine cursor position", vim.log.levels.WARN, { title = "Review" })
+    return
+  end
+
+  -- Validate file path is not empty
+  if file == "" then
+    vim.notify("Empty file path detected", vim.log.levels.ERROR, { title = "Review" })
     return
   end
 
@@ -623,37 +764,79 @@ function M.start_suggestion_thread()
   end
 
   local pr_node_id = api.get_pr_node_id(pr.number)
-  if not pr_node_id then
+  if not pr_node_id or pr_node_id == "" then
     vim.notify("Failed to get PR ID", vim.log.levels.ERROR, { title = "Review" })
     return
   end
 
-  -- Get current line content as default suggestion
+  -- Get current line for suggestion pre-fill
   local current_content = get_current_line_content() or ""
 
-  vim.ui.input({
-    prompt = "Suggested replacement: ",
-    default = current_content,
-  }, function(replacement)
-    if replacement == nil then
+  -- Pre-fill for suggestions
+  local initial_text = nil
+  if default_type == "suggestion" then
+    initial_text = "```suggestion\n" .. current_content .. "\n```"
+  end
+
+  -- Only Note and Suggestion for GitHub threads
+  local allowed_types = { "note", "suggestion" }
+
+  popup.open(default_type or "note", initial_text, function(comment_type, text)
+    if not comment_type or not text or text == "" then
       return
     end
 
-    -- Build suggestion body with GitHub syntax
-    local body = "```suggestion\n" .. replacement .. "\n```"
-
-    local ok, err = api.add_review_thread(pr_node_id, file, line, body)
+    local ok, err = api.add_review_thread(pr_node_id, file, line, text)
     if not ok then
-      vim.notify("Failed to create suggestion: " .. (err or "unknown error"), vim.log.levels.ERROR, { title = "Review" })
+      vim.notify("Failed to create thread: " .. (err or "unknown error"), vim.log.levels.ERROR, { title = "Review" })
       return
     end
 
-    vim.notify("Suggestion created", vim.log.levels.INFO, { title = "Review" })
+    vim.notify("Thread created", vim.log.levels.INFO, { title = "Review" })
 
-    -- Refresh threads
-    M.fetch(pr.number)
-    M.render_all()
-  end)
+    -- Optimistically add thread locally for immediate display
+    local new_thread = {
+      id = "pending_" .. os.time(),
+      path = file,
+      line = line,
+      start_line = nil,
+      side = "RIGHT",
+      is_resolved = false,
+      is_outdated = false,
+      comments = {
+        {
+          id = "pending_comment_" .. os.time(),
+          author = api.get_current_user() or "you",
+          body = text,
+          created_at = os.date("!%Y-%m-%dT%H:%M:%SZ"),
+          reactions = {},
+        },
+      },
+    }
+
+    table.insert(M.threads, new_thread)
+    if not M.threads_by_file[file] then
+      M.threads_by_file[file] = {}
+    end
+    table.insert(M.threads_by_file[file], new_thread)
+
+    -- Render immediately
+    vim.schedule(function()
+      M.render_all()
+    end)
+
+    -- Then refresh from GitHub in background to get real IDs
+    vim.defer_fn(function()
+      M.fetch(pr.number)
+      M.render_all()
+    end, 1000)
+  end, current_content, allowed_types)
+end
+
+---Start a new suggestion thread at cursor position
+---Uses GitHub's suggestion syntax for one-click apply
+function M.start_suggestion_thread()
+  M.start_new_thread("suggestion")
 end
 
 ---Get lines content from buffer for a range
@@ -666,8 +849,10 @@ local function get_lines_content(start_line, end_line)
 end
 
 ---Start a multi-line thread (visual selection)
-function M.start_multiline_thread()
+---@param default_type? "note"|"suggestion" Default type (default: "note")
+function M.start_multiline_thread(default_type)
   local hooks = require("review.hooks")
+  local popup = require("review.popup")
   local file = hooks.get_cursor_position()
 
   if not file then
@@ -696,12 +881,25 @@ function M.start_multiline_thread()
     return
   end
 
-  vim.ui.input({ prompt = string.format("Comment on lines %d-%d: ", start_line, end_line) }, function(input)
-    if not input or input == "" then
+  -- Get selected lines for suggestion pre-fill
+  local selected_lines = get_lines_content(start_line, end_line)
+  local selected_content = table.concat(selected_lines, "\n")
+
+  -- Pre-fill for suggestions
+  local initial_text = nil
+  if default_type == "suggestion" then
+    initial_text = "```suggestion\n" .. selected_content .. "\n```"
+  end
+
+  -- Only Note and Suggestion for GitHub threads
+  local allowed_types = { "note", "suggestion" }
+
+  popup.open(default_type or "note", initial_text, function(comment_type, text)
+    if not comment_type or not text or text == "" then
       return
     end
 
-    local ok, err = api.add_review_thread(pr_node_id, file, end_line, input, start_line)
+    local ok, err = api.add_review_thread(pr_node_id, file, end_line, text, start_line)
     if not ok then
       vim.notify("Failed to create thread: " .. (err or "unknown error"), vim.log.levels.ERROR, { title = "Review" })
       return
@@ -709,68 +907,48 @@ function M.start_multiline_thread()
 
     vim.notify("Multi-line thread created", vim.log.levels.INFO, { title = "Review" })
 
-    M.fetch(pr.number)
-    M.render_all()
-  end)
+    -- Optimistically add thread locally for immediate display
+    local new_thread = {
+      id = "pending_" .. os.time(),
+      path = file,
+      line = end_line,
+      start_line = start_line,
+      side = "RIGHT",
+      is_resolved = false,
+      is_outdated = false,
+      comments = {
+        {
+          id = "pending_comment_" .. os.time(),
+          author = api.get_current_user() or "you",
+          body = text,
+          created_at = os.date("!%Y-%m-%dT%H:%M:%SZ"),
+          reactions = {},
+        },
+      },
+    }
+
+    table.insert(M.threads, new_thread)
+    if not M.threads_by_file[file] then
+      M.threads_by_file[file] = {}
+    end
+    table.insert(M.threads_by_file[file], new_thread)
+
+    -- Render immediately
+    vim.schedule(function()
+      M.render_all()
+    end)
+
+    -- Then refresh from GitHub in background to get real IDs
+    vim.defer_fn(function()
+      M.fetch(pr.number)
+      M.render_all()
+    end, 1000)
+  end, selected_content, allowed_types)
 end
 
 ---Start a multi-line suggestion (visual selection)
 function M.start_multiline_suggestion()
-  local hooks = require("review.hooks")
-  local file = hooks.get_cursor_position()
-
-  if not file then
-    vim.notify("Could not determine cursor position", vim.log.levels.WARN, { title = "Review" })
-    return
-  end
-
-  -- Get visual selection range
-  local start_line = vim.fn.line("'<")
-  local end_line = vim.fn.line("'>")
-
-  if start_line > end_line then
-    start_line, end_line = end_line, start_line
-  end
-
-  local github = require("review.github")
-  local pr = github.get_current_pr()
-  if not pr then
-    vim.notify("No active PR review", vim.log.levels.ERROR, { title = "Review" })
-    return
-  end
-
-  local pr_node_id = api.get_pr_node_id(pr.number)
-  if not pr_node_id then
-    vim.notify("Failed to get PR ID", vim.log.levels.ERROR, { title = "Review" })
-    return
-  end
-
-  -- Get selected lines as default
-  local selected_lines = get_lines_content(start_line, end_line)
-  local default_content = table.concat(selected_lines, "\n")
-
-  vim.ui.input({
-    prompt = string.format("Suggestion for lines %d-%d: ", start_line, end_line),
-    default = default_content,
-  }, function(replacement)
-    if replacement == nil then
-      return
-    end
-
-    -- Build suggestion body
-    local body = "```suggestion\n" .. replacement .. "\n```"
-
-    local ok, err = api.add_review_thread(pr_node_id, file, end_line, body, start_line)
-    if not ok then
-      vim.notify("Failed to create suggestion: " .. (err or "unknown error"), vim.log.levels.ERROR, { title = "Review" })
-      return
-    end
-
-    vim.notify("Multi-line suggestion created", vim.log.levels.INFO, { title = "Review" })
-
-    M.fetch(pr.number)
-    M.render_all()
-  end)
+  M.start_multiline_thread("suggestion")
 end
 
 ---Edit a comment in a thread (edits the last comment you authored)
@@ -919,6 +1097,35 @@ function M.add_reaction(thread)
   end)
 end
 
+---Open thread in browser
+function M.open_thread_in_browser()
+  local hooks = require("review.hooks")
+  local file, line = hooks.get_cursor_position()
+
+  if not file or not line then
+    return false
+  end
+
+  local thread = M.get_at_line(file, line)
+  if not thread then
+    return false
+  end
+
+  local github = require("review.github")
+  local pr = github.get_current_pr()
+  if not pr then
+    return false
+  end
+
+  -- GitHub PR file URL with anchor to the file
+  -- Format: https://github.com/owner/repo/pull/number/files#diff-<hash>
+  -- For simplicity, open the files changed page
+  local url = string.format("%s/files", pr.url)
+  vim.fn.system(string.format("open %s", vim.fn.shellescape(url)))
+  vim.notify("Opened PR files in browser", vim.log.levels.INFO, { title = "Review" })
+  return true
+end
+
 ---Show PR description popup
 function M.show_pr_description()
   local github = require("review.github")
@@ -991,6 +1198,9 @@ function M.show_pr_description()
   })
 
   popup:mount()
+
+  -- Ensure popup has focus
+  vim.api.nvim_set_current_win(popup.winid)
 
   local buf = popup.bufnr
   vim.api.nvim_set_option_value("modifiable", true, { buf = buf })

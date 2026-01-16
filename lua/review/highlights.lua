@@ -31,6 +31,14 @@ function M.setup()
   vim.api.nvim_set_hl(0, "ReviewGitHubOutdated", { bg = "#1f1f1f", italic = true, default = true })
   vim.api.nvim_set_hl(0, "ReviewGitHubVirtText", { fg = "#6b7280", italic = true, default = true })
   vim.api.nvim_set_hl(0, "ReviewGitHubAuthor", { fg = "#60a5fa", bold = true, default = true })
+
+  -- PR picker highlights
+  vim.api.nvim_set_hl(0, "ReviewPRIcon", { fg = "#3fb950", default = true }) -- Green PR icon
+  vim.api.nvim_set_hl(0, "ReviewPRDraft", { fg = "#6b7280", italic = true, default = true }) -- Gray for drafts
+  vim.api.nvim_set_hl(0, "ReviewPRNumber", { fg = "#58a6ff", bold = true, default = true }) -- Blue PR number
+  vim.api.nvim_set_hl(0, "ReviewPRBranch", { fg = "#f78166", default = true }) -- Orange branch names
+  vim.api.nvim_set_hl(0, "ReviewPRAuthor", { fg = "#8b949e", default = true }) -- Gray author
+  vim.api.nvim_set_hl(0, "ReviewPRSearch", { fg = "#c9d1d9", italic = true, default = true }) -- Search prompt
 end
 
 return M

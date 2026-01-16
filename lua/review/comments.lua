@@ -9,6 +9,24 @@ local function notify(msg, level)
   vim.notify(msg, level, { title = "Review" })
 end
 
+---Get the current line content from buffer
+---@return string
+local function get_current_line_content()
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local lines = vim.api.nvim_buf_get_lines(0, cursor[1] - 1, cursor[1], false)
+  return lines[1] or ""
+end
+
+---Check if currently in PR review mode
+---@return boolean
+local function is_pr_mode()
+  local ok, github = pcall(require, "review.github")
+  if ok and github.get_current_pr then
+    return github.get_current_pr() ~= nil
+  end
+  return false
+end
+
 ---@param initial_type? "note"|"suggestion"|"issue"|"praise"
 function M.add_at_cursor(initial_type)
   local file, line = hooks.get_cursor_position()
@@ -23,7 +41,26 @@ function M.add_at_cursor(initial_type)
     return
   end
 
-  popup.open(initial_type or "note", nil, function(comment_type, text)
+  -- Get current line for suggestion pre-fill
+  local current_content = get_current_line_content()
+
+  -- For suggestions, pre-fill with GitHub suggestion syntax
+  local initial_text = nil
+  if initial_type == "suggestion" then
+    initial_text = "```suggestion\n" .. current_content .. "\n```"
+  end
+
+  -- In PR mode, only allow note and suggestion (GitHub-compatible types)
+  local allowed_types = nil
+  if is_pr_mode() then
+    allowed_types = { "note", "suggestion" }
+    -- Validate initial_type for PR mode
+    if initial_type and initial_type ~= "note" and initial_type ~= "suggestion" then
+      initial_type = "note"
+    end
+  end
+
+  popup.open(initial_type or "note", initial_text, function(comment_type, text)
     if comment_type and text then
       store.add(file, line, comment_type, text)
       -- Schedule refresh to run after popup is fully closed
@@ -32,7 +69,7 @@ function M.add_at_cursor(initial_type)
       end)
       notify(string.format("Added %s comment", comment_type), vim.log.levels.INFO)
     end
-  end)
+  end, current_content, allowed_types)
 end
 
 -- Alias for backwards compatibility
