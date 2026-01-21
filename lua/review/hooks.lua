@@ -23,6 +23,24 @@ local function normalize_path(path)
   return path
 end
 
+---Set filetype for a buffer based on file path
+---@param bufnr number
+---@param path string|nil
+local function set_buffer_filetype(bufnr, path)
+  if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+    return
+  end
+  if not path or path == "" then
+    return
+  end
+
+  -- Use Neovim's built-in filetype detection
+  local ft = vim.filetype.match({ filename = path, buf = bufnr })
+  if ft then
+    vim.api.nvim_set_option_value("filetype", ft, { buf = bufnr })
+  end
+end
+
 ---@return number|nil tabpage id
 function M.get_current_tabpage()
   return current_tabpage
@@ -123,6 +141,11 @@ function M.on_session_created(tabpage)
   end
 
   local orig_buf, mod_buf = lifecycle.get_buffers(tabpage)
+
+  -- Set filetype for syntax highlighting (needed for commit reviews)
+  local orig_path, mod_path = lifecycle.get_paths(tabpage)
+  set_buffer_filetype(orig_buf, orig_path)
+  set_buffer_filetype(mod_buf, mod_path)
 
   -- Make buffers readonly if configured
   local cfg = config.get()
