@@ -14,6 +14,13 @@ Inspired by [tuicr](https://github.com/agavra/tuicr).
 - Export format optimized for AI conversations
 - Send comments directly to [sidekick.nvim](https://github.com/folke/sidekick.nvim) for AI chat
 - Commit picker modal to select specific commits to review
+- **GitHub PR review support**: checkout PRs, view/reply to threads, start new comments, submit reviews
+  - PR picker with search filtering
+  - View existing review threads with full conversation history
+  - Start new threads or code suggestions (single-line and multi-line)
+  - Reply, resolve/unresolve, edit, delete comments
+  - Add reactions to comments
+  - Open PR in browser
 - Built on top of codediff.nvim
 
 ## Requirements
@@ -21,6 +28,7 @@ Inspired by [tuicr](https://github.com/agavra/tuicr).
 - Neovim >= 0.9
 - [codediff.nvim](https://github.com/esmuellert/codediff.nvim)
 - [nui.nvim](https://github.com/MunifTanjim/nui.nvim)
+- [GitHub CLI](https://cli.github.com/) (optional, for PR reviews)
 
 ## Installation
 
@@ -48,6 +56,9 @@ Using lazy.nvim:
 :Review              " Open codediff with comment keymaps (default)
 :Review open         " Same as above
 :Review commits      " Select commits to review (picker modal)
+:Review PR           " Review a GitHub PR (opens picker)
+:Review PR 123       " Review specific PR by number
+:Review submit       " Submit review to GitHub
 :Review close        " Close and export comments to clipboard
 :Review export       " Export comments to clipboard
 :Review preview      " Preview exported markdown in split
@@ -76,6 +87,30 @@ Using lazy.nvim:
 | `S` | Send comments to sidekick.nvim |
 | `<C-r>` | Clear all comments |
 | `q` | Close and export comments to clipboard |
+
+**GitHub PR keymaps** (when reviewing a PR):
+| Key | Action |
+|-----|--------|
+| `gC` | Show GitHub thread at cursor |
+| `ga` | Start new GitHub thread at cursor |
+| `gS` | Start GitHub suggestion (one-click apply) |
+| `ga` (visual) | Multi-line comment on selection |
+| `gS` (visual) | Multi-line suggestion on selection |
+| `gp` | Show PR description |
+| `]t` | Jump to next GitHub thread |
+| `[t` | Jump to previous GitHub thread |
+| `gs` | Submit review to GitHub |
+| `go` | Open PR in browser |
+
+**Thread popup keymaps** (when viewing a thread with `gC`):
+| Key | Action |
+|-----|--------|
+| `r` | Reply to thread |
+| `R` | Toggle resolved status |
+| `e` | Edit your last comment |
+| `d` | Delete your last comment |
+| `+` | Add reaction to last comment |
+| `q` | Close popup |
 
 **Edit mode** (when `readonly = false`):
 | Key | Action |
@@ -135,6 +170,86 @@ Comment types: ISSUE (problems to fix), SUGGESTION (improvements), NOTE (observa
 2. **[SUGGESTION]** `src/utils/api.ts:45` - Consider using useMemo here
 3. **[PRAISE]** `src/hooks/useAuth.ts:12` - Clean implementation of the auth flow
 ```
+
+## GitHub PR Review
+
+review.nvim can review GitHub PRs directly. It uses the `gh` CLI to checkout PRs, fetch existing review threads, and submit reviews.
+
+### Why review.nvim over octo.nvim?
+
+[octo.nvim](https://github.com/pwntester/octo.nvim) is a full-featured GitHub client. review.nvim takes a different approach:
+
+| | review.nvim | octo.nvim |
+|---|---|---|
+| **Focus** | Code review workflow | Full GitHub client |
+| **Diff view** | codediff.nvim (side-by-side, syntax highlighting) | Custom buffer |
+| **Dependencies** | nui.nvim + `gh` CLI | telescope, plenary, devicons |
+| **AI integration** | Export to clipboard/sidekick for AI feedback | None |
+| **Local annotations** | Yes (batch review workflow) | No |
+| **Issues, PRs, gists** | PRs only | Full support |
+
+**Choose review.nvim if you:**
+- Want a focused code review experience with proper side-by-side diffs
+- Use AI assistants (Claude, ChatGPT) in your review workflow
+- Prefer minimal dependencies (nui.nvim + `gh` CLI)
+- Want to batch annotations locally before submitting
+
+**Choose octo.nvim if you:**
+- Need full GitHub management (issues, PRs, gists, etc.)
+- Want to manage PR metadata (labels, assignees, milestones)
+- Prefer telescope-based navigation
+
+### Setup
+
+1. Install [GitHub CLI](https://cli.github.com/)
+2. Authenticate: `gh auth login`
+
+### Workflow
+
+```vim
+:Review PR           " Pick from open PRs (with search)
+:Review PR 123       " Open specific PR by number
+```
+
+The PR picker supports filtering: just type to search by PR number, title, branch name, or author.
+
+This will:
+1. Checkout the PR branch
+2. Open codediff with the correct diff (merge-base to head)
+3. Fetch and display existing GitHub review threads
+4. Let you add your own annotations
+
+### Viewing GitHub Threads
+
+Existing PR comments show as purple `◆` signs (or gray `✓` if resolved). Press `gC` to view the full thread with all replies and reactions. From the thread popup you can reply, resolve/unresolve, edit or delete your comments, and add reactions.
+
+### Starting New Threads
+
+Use `ga` to start a new comment thread at the cursor line, or `gS` to start a code suggestion (uses GitHub's suggestion syntax for one-click apply).
+
+### Multi-line Comments
+
+Select lines in visual mode, then press `ga` for a multi-line comment or `gS` for a multi-line suggestion. GitHub will highlight the entire range in the PR.
+
+### Quick vs Batch Review
+
+Two workflows are supported:
+- **Quick ad-hoc comments**: Use `ga`/`gS` to post comments immediately to GitHub
+- **Batch review**: Use `i` to add local annotations, then `gs` to submit them all as a single review
+
+### Submitting Reviews
+
+After adding your annotations, press `gs` or run `:Review submit`:
+
+1. Preview your comments
+2. Choose review type: Approve (`a`), Comment (`c`), or Request Changes (`r`)
+3. Add an optional summary
+4. Comments are submitted as a PR review
+
+Your local comment types map to GitHub:
+- **Issue** → suggests "Request Changes"
+- **Suggestion/Note** → suggests "Comment"
+- **Praise** → suggests "Approve"
 
 ## Running Tests
 

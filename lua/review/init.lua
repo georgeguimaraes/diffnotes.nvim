@@ -111,6 +111,13 @@ function M.open_commits()
   end)
 end
 
+---Open a GitHub PR for review
+---@param number? number PR number (opens picker if nil)
+function M.open_pr(number)
+  local github = require("review.github")
+  github.open(number)
+end
+
 function M.close()
   -- Export comments to clipboard before closing
   local count = store.count()

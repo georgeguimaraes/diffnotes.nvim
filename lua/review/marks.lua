@@ -19,28 +19,74 @@ local function normalize_path(path)
   return path
 end
 
+---Get file path for a buffer using lifecycle API (consistent with hooks.get_cursor_position)
+---@param bufnr number
+---@return string|nil
+local function get_file_for_buffer(bufnr)
+  local ok, lifecycle = pcall(require, "codediff.ui.lifecycle")
+  if not ok then
+    return nil
+  end
+
+  local tabpage = vim.api.nvim_get_current_tabpage()
+  local sess = lifecycle.get_session(tabpage)
+  if not sess then
+    return nil
+  end
+
+  local orig_path, mod_path = lifecycle.get_paths(tabpage)
+  local orig_buf, mod_buf = lifecycle.get_buffers(tabpage)
+
+  -- Determine which file based on buffer
+  local file_path
+  if bufnr == orig_buf then
+    file_path = orig_path
+  elseif bufnr == mod_buf then
+    file_path = mod_path
+  end
+
+  if not file_path then
+    return nil
+  end
+
+  -- Get relative path using git context
+  local git_ctx = lifecycle.get_git_context(tabpage)
+  if git_ctx and git_ctx.git_root then
+    local abs_path = vim.fn.fnamemodify(file_path, ":p")
+    local rel_path = abs_path:gsub("^" .. vim.pesc(git_ctx.git_root) .. "/", "")
+    return normalize_path(rel_path)
+  end
+
+  return normalize_path(vim.fn.fnamemodify(file_path, ":."))
+end
+
 ---@param bufnr number
 function M.render_for_buffer(bufnr)
   if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
     return
   end
 
-  local bufname = vim.api.nvim_buf_get_name(bufnr)
-  if not bufname or bufname == "" then
-    return
-  end
+  -- Try to get file path from lifecycle API first (consistent with hooks.get_cursor_position)
+  local file = get_file_for_buffer(bufnr)
 
-  -- Extract file path, handling codediff:// virtual buffers
-  local file
-  if bufname:match("^codediff://") then
-    -- Virtual buffer: extract path from URI
-    -- Format: codediff://repo/path/to/file.lua?rev=xxx
-    local path = bufname:match("^codediff://[^/]+/(.+)%?") or bufname:match("^codediff://[^/]+/(.+)$")
-    if path then
-      file = normalize_path(path)
+  -- Fallback to buffer name parsing if lifecycle API fails
+  if not file then
+    local bufname = vim.api.nvim_buf_get_name(bufnr)
+    if not bufname or bufname == "" then
+      return
     end
-  else
-    file = normalize_path(vim.fn.fnamemodify(bufname, ":."))
+
+    -- Extract file path, handling codediff:// virtual buffers
+    if bufname:match("^codediff://") then
+      -- Virtual buffer: extract path from URI
+      -- Format: codediff://repo/path/to/file.lua?rev=xxx
+      local path = bufname:match("^codediff://[^/]+/(.+)%?") or bufname:match("^codediff://[^/]+/(.+)$")
+      if path then
+        file = normalize_path(path)
+      end
+    else
+      file = normalize_path(vim.fn.fnamemodify(bufname, ":."))
+    end
   end
 
   if not file then

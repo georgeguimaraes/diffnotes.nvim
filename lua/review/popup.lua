@@ -5,7 +5,9 @@ local config = require("review.config")
 ---@param initial_type? "note"|"suggestion"|"issue"|"praise"
 ---@param initial_text? string
 ---@param callback fun(comment_type: string|nil, text: string|nil)
-function M.open(initial_type, initial_text, callback)
+---@param current_line? string Current line content for suggestion pre-fill
+---@param allowed_types? string[] Types to show (default: all types)
+function M.open(initial_type, initial_text, callback, current_line, allowed_types)
   local ok_popup, Popup = pcall(require, "nui.popup")
   local ok_layout, Layout = pcall(require, "nui.layout")
 
@@ -27,7 +29,7 @@ function M.open(initial_type, initial_text, callback)
   end
 
   local cfg = config.get()
-  local type_keys = { "note", "suggestion", "issue", "praise" }
+  local type_keys = allowed_types or { "note", "suggestion", "issue", "praise" }
   local current_type_idx = 1
 
   -- Find initial type index
@@ -59,8 +61,10 @@ function M.open(initial_type, initial_text, callback)
     border = {
       style = "rounded",
       text = {
-        top = " Comment (C-s: submit) ",
+        top = " Comment ",
         top_align = "center",
+        bottom = " C-s: submit • Esc: cancel ",
+        bottom_align = "center",
       },
     },
     win_options = {
@@ -86,6 +90,14 @@ function M.open(initial_type, initial_text, callback)
     }, { dir = "col" })
   )
 
+  local function get_text()
+    local lines = vim.api.nvim_buf_get_lines(text_popup.bufnr, 0, -1, false)
+    local text = table.concat(lines, "\n")
+    -- Trim trailing whitespace/newlines
+    text = text:gsub("%s+$", "")
+    return text
+  end
+
   local function render_types()
     local parts = {}
     for i, key in ipairs(type_keys) do
@@ -107,14 +119,18 @@ function M.open(initial_type, initial_text, callback)
     current_type_idx = current_type_idx % #type_keys + 1
     vim.api.nvim_set_option_value("modifiable", true, { buf = type_popup.bufnr })
     render_types()
-  end
 
-  local function get_text()
-    local lines = vim.api.nvim_buf_get_lines(text_popup.bufnr, 0, -1, false)
-    local text = table.concat(lines, "\n")
-    -- Trim trailing whitespace/newlines
-    text = text:gsub("%s+$", "")
-    return text
+    -- If switching to suggestion and text is empty, pre-fill with suggestion syntax
+    if type_keys[current_type_idx] == "suggestion" and current_line then
+      local current_text = get_text()
+      if current_text == "" then
+        local suggestion_text = "```suggestion\n" .. current_line .. "\n```"
+        local lines = vim.split(suggestion_text, "\n")
+        vim.api.nvim_buf_set_lines(text_popup.bufnr, 0, -1, false, lines)
+        -- Position cursor inside the suggestion block
+        vim.api.nvim_win_set_cursor(text_popup.winid, { 2, 0 })
+      end
+    end
   end
 
   local function submit()
