@@ -3,7 +3,7 @@ local M = {}
 local config = require("review.config")
 local store = require("review.store")
 local export = require("review.export")
-local hooks = require("review.hooks")
+local review = require("review")
 
 local id_marker_prefix = "<!--r:id="
 local id_marker_suffix = "-->"
@@ -269,15 +269,10 @@ function M.write_from_store(opts)
   end
 
   if opts and opts.close then
-    M.close_tab_only()
+    review.close_tab_only()
   end
 
   return true
-end
-
-function M.close_tab_only()
-  vim.cmd("tabclose")
-  hooks.on_session_closed()
 end
 
 return M

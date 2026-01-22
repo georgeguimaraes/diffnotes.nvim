@@ -120,7 +120,7 @@ function M.open_commits()
   end)
 end
 
-local function close_tab_only()
+function M.close_tab_only()
   vim.cmd("tabclose")
   hooks.on_session_closed()
 end
@@ -136,7 +136,7 @@ function M.close()
   end
 
   -- Close the tab
-  close_tab_only()
+  M.close_tab_only()
 end
 
 function M.export()
