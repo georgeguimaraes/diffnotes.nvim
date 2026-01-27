@@ -3,7 +3,6 @@ local M = {}
 local config = require("review.config")
 local store = require("review.store")
 local export = require("review.export")
-local review = require("review")
 
 
 ---@return string|nil
@@ -213,7 +212,8 @@ function M.write_from_store(opts)
   end
 
   if opts and opts.close then
-    review.close_tab_only()
+    vim.cmd("tabclose")
+    require("review.hooks").on_session_closed()
   end
 
   return true

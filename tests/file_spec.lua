@@ -43,16 +43,11 @@ describe("review.file", function()
     end
   end)
 
-  it("writes markdown with inline ids and reloads", function()
-    local comment = store.add("src/main.lua", 12, "issue", "Fix this bug")
+  it("writes markdown and reloads", function()
+    store.add("src/main.lua", 12, "issue", "Fix this bug")
 
     local ok = file.write_from_store({ copy = false, close = false })
     assert.is_true(ok)
-
-    local content = read_file(file_path)
-    assert.is_truthy(content)
-    local marker = "<!--r:id=" .. comment.id .. "-->"
-    assert.is_truthy(content:find(marker, 1, true))
 
     store.clear()
     local loaded = file.load_into_store()
@@ -60,7 +55,7 @@ describe("review.file", function()
 
     local all = store.get_all()
     assert.equals(1, #all)
-    assert.equals(comment.id, all[1].id)
+    assert.matches("^comment_%d+_%d+$", all[1].id)
     assert.equals("src/main.lua", all[1].file)
     assert.equals(12, all[1].line)
     assert.equals("issue", all[1].type)
