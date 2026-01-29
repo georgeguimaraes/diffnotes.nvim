@@ -4,34 +4,51 @@ local config = require("review.config")
 local comments = require("review.comments")
 local export = require("review.export")
 
--- Track which buffers have keymaps set
+-- Track which buffers have keymaps set and what keys were mapped
 local keymapped_buffers = {}
+
+--- Check if a keymap is enabled (not false, nil, or empty string)
+---@param key string|false|nil
+---@return boolean
+local function is_enabled(key)
+  return key ~= nil and key ~= false and key ~= ""
+end
+
+--- Delete a keymap from a buffer if it exists
+---@param bufnr number
+---@param lhs string|nil
+local function del_keymap(bufnr, lhs)
+  if lhs and vim.api.nvim_buf_is_valid(bufnr) then
+    pcall(vim.keymap.del, "n", lhs, { buffer = bufnr })
+  end
+end
+
+--- Delete all tracked keymaps from a buffer
+---@param bufnr number
+local function clear_buffer_keymaps(bufnr)
+  local tracked = keymapped_buffers[bufnr]
+  if tracked then
+    for _, lhs in ipairs(tracked) do
+      del_keymap(bufnr, lhs)
+    end
+  end
+end
 
 ---@param bufnr number
 local function set_buffer_keymaps(bufnr)
-  if keymapped_buffers[bufnr] then
-    return
-  end
+  -- Clear existing keymaps first
+  clear_buffer_keymaps(bufnr)
 
   local cfg = config.get()
   local km = cfg.keymaps
   local readonly = cfg.codediff.readonly
+  local mapped = {}
 
-  local opts = { buffer = bufnr, noremap = true, silent = true, nowait = true }
-
-  -- Simple keymaps in readonly mode
-  if readonly then
-    vim.keymap.set("n", "i", function() comments.add_with_menu() end, vim.tbl_extend("force", opts, { desc = "Add comment (pick type)" }))
-    vim.keymap.set("n", "d", function() comments.delete_at_cursor() end, vim.tbl_extend("force", opts, { desc = "Delete comment" }))
-    vim.keymap.set("n", "e", function() comments.edit_at_cursor() end, vim.tbl_extend("force", opts, { desc = "Edit comment" }))
-  else
-    -- Leader keymaps in edit mode
-    vim.keymap.set("n", km.add_note, function() comments.add_at_cursor("note") end, vim.tbl_extend("force", opts, { desc = "Add note" }))
-    vim.keymap.set("n", km.add_suggestion, function() comments.add_at_cursor("suggestion") end, vim.tbl_extend("force", opts, { desc = "Add suggestion" }))
-    vim.keymap.set("n", km.add_issue, function() comments.add_at_cursor("issue") end, vim.tbl_extend("force", opts, { desc = "Add issue" }))
-    vim.keymap.set("n", km.add_praise, function() comments.add_at_cursor("praise") end, vim.tbl_extend("force", opts, { desc = "Add praise" }))
-    vim.keymap.set("n", km.delete_comment, function() comments.delete_at_cursor() end, vim.tbl_extend("force", opts, { desc = "Delete comment" }))
-    vim.keymap.set("n", km.edit_comment, function() comments.edit_at_cursor() end, vim.tbl_extend("force", opts, { desc = "Edit comment" }))
+  local function set(lhs, rhs, desc)
+    if is_enabled(lhs) then
+      vim.keymap.set("n", lhs, rhs, { buffer = bufnr, noremap = true, silent = true, nowait = true, desc = desc })
+      table.insert(mapped, lhs)
+    end
   end
 
   -- Helper to jump to first hunk in current file
@@ -53,46 +70,40 @@ local function set_buffer_keymaps(bufnr)
     pcall(vim.api.nvim_win_set_cursor, 0, { target_line, 0 })
   end
 
-  -- File navigation (Tab/S-Tab to cycle files)
-  vim.keymap.set("n", "<Tab>", function()
-    local ok, lifecycle = pcall(require, "codediff.ui.lifecycle")
-    if not ok then return end
-    local tabpage = vim.api.nvim_get_current_tabpage()
-    local explorer_obj = lifecycle.get_explorer(tabpage)
-    if explorer_obj then
-      require("codediff.ui.explorer").navigate_next(explorer_obj)
-      -- Jump to first hunk after file loads
-      vim.defer_fn(jump_to_first_hunk, 100)
+  -- File navigation helper
+  local function navigate(direction)
+    return function()
+      local ok, lifecycle = pcall(require, "codediff.ui.lifecycle")
+      if not ok then return end
+      local tabpage = vim.api.nvim_get_current_tabpage()
+      local explorer_obj = lifecycle.get_explorer(tabpage)
+      if explorer_obj then
+        require("codediff.ui.explorer")["navigate_" .. direction](explorer_obj)
+        vim.defer_fn(jump_to_first_hunk, 100)
+      end
     end
-  end, vim.tbl_extend("force", opts, { desc = "Next file" }))
+  end
 
-  vim.keymap.set("n", "<S-Tab>", function()
-    local ok, lifecycle = pcall(require, "codediff.ui.lifecycle")
-    if not ok then return end
-    local tabpage = vim.api.nvim_get_current_tabpage()
-    local explorer_obj = lifecycle.get_explorer(tabpage)
-    if explorer_obj then
-      require("codediff.ui.explorer").navigate_prev(explorer_obj)
-      -- Jump to first hunk after file loads
-      vim.defer_fn(jump_to_first_hunk, 100)
-    end
-  end, vim.tbl_extend("force", opts, { desc = "Previous file" }))
+  if readonly then
+    -- READONLY MODE: Full review keymaps
+    set(km.readonly_add, function() comments.add_with_menu() end, "Add comment (pick type)")
+    set(km.readonly_delete, function() comments.delete_at_cursor() end, "Delete comment")
+    set(km.readonly_edit, function() comments.edit_at_cursor() end, "Edit comment")
+    set(km.list_comments, function() comments.list() end, "List all comments")
+    set(km.export_clipboard, function() export.to_clipboard() end, "Export to clipboard")
+    set(km.send_sidekick, function() export.to_sidekick() end, "Send to sidekick")
+    set(km.clear_comments, function() require("review").clear() end, "Clear all comments")
+    set(km.next_comment, function() comments.goto_next() end, "Next comment")
+    set(km.prev_comment, function() comments.goto_prev() end, "Previous comment")
+  end
 
-  -- Common keymaps
-  vim.keymap.set("n", "c", function() comments.list() end, vim.tbl_extend("force", opts, { desc = "List all comments" }))
-  vim.keymap.set("n", "C", function() export.to_clipboard() end, vim.tbl_extend("force", opts, { desc = "Export to clipboard" }))
-  vim.keymap.set("n", "S", function() export.to_sidekick() end, vim.tbl_extend("force", opts, { desc = "Send to sidekick" }))
-  vim.keymap.set("n", "<C-r>", function() require("review").clear() end, vim.tbl_extend("force", opts, { desc = "Clear all comments" }))
-  vim.keymap.set("n", km.next_comment, function() comments.goto_next() end, vim.tbl_extend("force", opts, { desc = "Next comment" }))
-  vim.keymap.set("n", km.prev_comment, function() comments.goto_prev() end, vim.tbl_extend("force", opts, { desc = "Previous comment" }))
+  -- Navigation and close - available in both modes (or edit mode only for nav)
+  set(km.next_file, navigate("next"), "Next file")
+  set(km.prev_file, navigate("prev"), "Previous file")
+  set(km.close, function() require("review").close() end, "Close")
+  set(km.toggle_readonly, function() require("review").toggle_readonly() end, "Toggle readonly mode")
 
-  -- Close and export
-  vim.keymap.set("n", "q", function() require("review").close() end, vim.tbl_extend("force", opts, { desc = "Close" }))
-
-  -- Toggle readonly mode
-  vim.keymap.set("n", "R", function() require("review").toggle_readonly() end, vim.tbl_extend("force", opts, { desc = "Toggle readonly mode" }))
-
-  keymapped_buffers[bufnr] = true
+  keymapped_buffers[bufnr] = mapped
 end
 
 -- Autocmd group for keymaps
@@ -112,37 +123,31 @@ function M.setup_keymaps(tabpage)
   end
   augroup = vim.api.nvim_create_augroup("review_keymaps", { clear = true })
 
-  -- Reset tracking
+  -- Clear keymaps from all tracked buffers
+  for bufnr in pairs(keymapped_buffers) do
+    clear_buffer_keymaps(bufnr)
+  end
   keymapped_buffers = {}
 
   -- Set keymaps on current buffer
-  local current_buf = vim.api.nvim_get_current_buf()
-  set_buffer_keymaps(current_buf)
+  set_buffer_keymaps(vim.api.nvim_get_current_buf())
 
   -- Set up autocmd to apply keymaps when entering any buffer in this tabpage
   vim.api.nvim_create_autocmd("BufEnter", {
     group = augroup,
     callback = function()
-      -- Only apply if we're still in the codediff tabpage
-      if vim.api.nvim_get_current_tabpage() ~= tabpage then
-        return
-      end
-
-      -- Check if session still exists
-      local sess = lifecycle.get_session(tabpage)
-      if not sess then
-        return
-      end
-
-      local bufnr = vim.api.nvim_get_current_buf()
-      set_buffer_keymaps(bufnr)
+      if vim.api.nvim_get_current_tabpage() ~= tabpage then return end
+      if not lifecycle.get_session(tabpage) then return end
+      set_buffer_keymaps(vim.api.nvim_get_current_buf())
     end,
   })
-
 end
 
--- Clear keymaps tracking when readonly mode changes
+-- Clear keymaps from all tracked buffers
 function M.clear_keymaps()
+  for bufnr in pairs(keymapped_buffers) do
+    clear_buffer_keymaps(bufnr)
+  end
   keymapped_buffers = {}
 end
 
@@ -152,7 +157,7 @@ function M.cleanup()
     vim.api.nvim_del_augroup_by_id(augroup)
     augroup = nil
   end
-  keymapped_buffers = {}
+  M.clear_keymaps()
 end
 
 return M
