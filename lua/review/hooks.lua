@@ -226,11 +226,23 @@ function M.on_session_created(tabpage)
 end
 
 function M._focus_modified_pane(lifecycle, tabpage)
-  local cur_cfg = vim.api.nvim_win_get_config(vim.api.nvim_get_current_win())
+  local current_win = vim.api.nvim_get_current_win()
+  local cur_cfg = vim.api.nvim_win_get_config(current_win)
   if cur_cfg.relative ~= "" then
     return
   end
   local sess = lifecycle.get_session(tabpage)
+  if not sess then
+    return
+  end
+  if sess.original_win and vim.api.nvim_win_is_valid(sess.original_win) and current_win == sess.original_win then
+    return
+  end
+  local explorer = lifecycle.get_explorer and lifecycle.get_explorer(tabpage)
+  local explorer_win = explorer and explorer.split and explorer.split.winid
+  if explorer_win and vim.api.nvim_win_is_valid(explorer_win) and current_win == explorer_win then
+    return
+  end
   if sess and sess.modified_win and vim.api.nvim_win_is_valid(sess.modified_win) then
     vim.api.nvim_set_current_win(sess.modified_win)
   end
