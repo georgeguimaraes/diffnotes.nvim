@@ -226,6 +226,9 @@ function M.on_session_created(tabpage)
 end
 
 function M._focus_modified_pane(lifecycle, tabpage)
+  if vim.api.nvim_get_current_tabpage() ~= tabpage then
+    return
+  end
   local current_win = vim.api.nvim_get_current_win()
   local cur_cfg = vim.api.nvim_win_get_config(current_win)
   if cur_cfg.relative ~= "" then

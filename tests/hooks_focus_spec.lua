@@ -2,10 +2,11 @@ local hooks = require("review.hooks")
 
 describe("hooks focus behavior", function()
   local mod_buf, mod_win, orig_buf, orig_win
-  local extra_bufs
+  local extra_bufs, extra_tabs
 
   before_each(function()
     extra_bufs = {}
+    extra_tabs = {}
 
     -- Model the CodeDiff side-by-side layout closely enough for focus rules:
     -- an original pane on the left and a modified pane on the right.
@@ -24,6 +25,13 @@ describe("hooks focus behavior", function()
   end)
 
   after_each(function()
+    for _, tabpage in ipairs(extra_tabs) do
+      if vim.api.nvim_tabpage_is_valid(tabpage) then
+        vim.api.nvim_set_current_tabpage(tabpage)
+        vim.cmd("tabclose")
+      end
+    end
+
     -- Close windows before deleting buffers so Neovim does not retarget
     -- displayed buffers into another test's window layout.
     while #vim.api.nvim_tabpage_list_wins(0) > 1 do
@@ -91,6 +99,28 @@ describe("hooks focus behavior", function()
     assert.equals(orig_win, vim.api.nvim_get_current_win())
 
     vim.api.nvim_win_get_config = original_get_config
+  end)
+
+  it("should not steal focus from another tab", function()
+    local review_tabpage = vim.api.nvim_get_current_tabpage()
+
+    -- _focus_modified_pane is scheduled with a delay, so the user may leave
+    -- the review tab before the callback runs.
+    vim.cmd("tabnew")
+    local other_tabpage = vim.api.nvim_get_current_tabpage()
+    local other_win = vim.api.nvim_get_current_win()
+    table.insert(extra_tabs, other_tabpage)
+
+    local lifecycle = {
+      get_session = function()
+        return { original_win = orig_win, modified_win = mod_win }
+      end,
+    }
+
+    hooks._focus_modified_pane(lifecycle, review_tabpage)
+
+    assert.equals(other_tabpage, vim.api.nvim_get_current_tabpage())
+    assert.equals(other_win, vim.api.nvim_get_current_win())
   end)
 
   it("should not steal focus from the original pane", function()
