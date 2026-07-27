@@ -54,19 +54,35 @@ function M.get_session()
   return lifecycle.get_session(current_tabpage)
 end
 
+---Coerce a path value to a plain string.
+---@param path string|table|nil
+---@return string|nil
+local function to_path_string(path)
+  if type(path) ~= "table" then
+    return path
+  end
+  if path.absolute and path.absolute ~= "" then
+    return path.absolute
+  end
+  return path.relative
+end
+
 ---Relativize a path against the git root for consistent storage/lookup
----@param path string|nil
+---@param path string|table|nil
 ---@param lifecycle table
 ---@param tabpage number
 ---@return string|nil
 local function relativize_path(path, lifecycle, tabpage)
+  path = to_path_string(path)
   if not path then
     return nil
   end
   local git_ctx = lifecycle.get_git_context(tabpage)
   if git_ctx and git_ctx.git_root then
     local abs = vim.fn.fnamemodify(path, ":p")
-    return normalize_path(abs:gsub("^" .. vim.pesc(git_ctx.git_root) .. "/", ""))
+    return normalize_path(
+      abs:gsub("^" .. vim.pesc(git_ctx.git_root) .. "/", "")
+    )
   end
   return normalize_path(vim.fn.fnamemodify(path, ":."))
 end
@@ -175,8 +191,8 @@ function M.on_session_created(tabpage)
 
   -- Set filetype for syntax highlighting (needed for commit reviews)
   local raw_orig_path, raw_mod_path = lifecycle.get_paths(tabpage)
-  set_buffer_filetype(orig_buf, raw_orig_path)
-  set_buffer_filetype(mod_buf, raw_mod_path)
+  set_buffer_filetype(orig_buf, to_path_string(raw_orig_path))
+  set_buffer_filetype(mod_buf, to_path_string(raw_mod_path))
 
   -- Make buffers readonly if configured
   local cfg = config.get()
@@ -195,7 +211,8 @@ function M.on_session_created(tabpage)
   if buf_augroup then
     pcall(vim.api.nvim_del_augroup_by_id, buf_augroup)
   end
-  buf_augroup = vim.api.nvim_create_augroup("review_buf_marks", { clear = true })
+  buf_augroup =
+    vim.api.nvim_create_augroup("review_buf_marks", { clear = true })
 
   -- Set up BufEnter autocmd to render marks when entering codediff buffers
   -- This ensures marks are rendered even if buffers weren't ready initially
@@ -231,7 +248,11 @@ function M._focus_modified_pane(lifecycle, tabpage)
     return
   end
   local sess = lifecycle.get_session(tabpage)
-  if sess and sess.modified_win and vim.api.nvim_win_is_valid(sess.modified_win) then
+  if
+    sess
+    and sess.modified_win
+    and vim.api.nvim_win_is_valid(sess.modified_win)
+  then
     vim.api.nvim_set_current_win(sess.modified_win)
   end
 end
