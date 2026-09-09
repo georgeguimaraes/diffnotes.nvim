@@ -95,9 +95,107 @@ M.defaults = {
 ---@type ReviewConfig
 M.config = vim.deepcopy(M.defaults)
 
+-- Review keymaps that never touch diff buffers (popup-local) and are
+-- therefore excluded from conflict detection.
+local NON_DIFF_KEYMAPS = {
+  popup_submit = true,
+  popup_cancel = true,
+  popup_cycle_type = true,
+}
+
+-- Deliberate overrides skipped by conflict detection:
+-- { [review_key] = { role = <codediff role>, name = <codediff name> } }.
+-- Review's close intentionally shadows codediff's view.quit on diff buffers
+-- via a priority registry claim (see keymaps.lua).
+local KNOWN_OVERRIDES = {
+  close = { role = "view", name = "quit" },
+}
+
+--- Flatten one codediff keymap role to a list of { name, lhs }.
+---@param role_maps table|nil
+---@return { name: string, lhs: string }[]
+local function flatten_role(role_maps)
+  local out = {}
+  if type(role_maps) ~= "table" then
+    return out
+  end
+  for name, lhs in pairs(role_maps) do
+    for _, key in ipairs(type(lhs) == "table" and lhs or { lhs }) do
+      if type(key) == "string" and key ~= "" then
+        table.insert(out, { name = name, lhs = key })
+      end
+    end
+  end
+  return out
+end
+
+--- Best-effort canonicalization so equivalent spellings compare equal.
+---@param lhs string
+---@return string
+local function canonical(lhs)
+  local ok, normalize = pcall(require, "codediff.keymap.normalize")
+  if ok and normalize and normalize.canonical then
+    local ok2, result = pcall(normalize.canonical, lhs)
+    if ok2 and result then
+      return result
+    end
+  end
+  return lhs
+end
+
+--- Compare resolved review maps against the codediff roles that land on
+--- diff buffers (view is tab-wide, conflict is diff/result scoped) and warn
+--- about silent shadowing. Silently returns {} when codediff is absent.
+---@return string[] overlaps human-readable overlap descriptions
+function M.check_codediff_conflicts()
+  local ok, codediff_config = pcall(require, "codediff.config")
+  if not ok or type(codediff_config) ~= "table" then
+    return {}
+  end
+  local keymaps = codediff_config.options and codediff_config.options.keymaps
+  if type(keymaps) ~= "table" then
+    return {}
+  end
+
+  local codediff_maps = {}
+  for _, role in ipairs({ "view", "conflict" }) do
+    for _, entry in ipairs(flatten_role(keymaps[role])) do
+      table.insert(codediff_maps, { role = role, name = entry.name, lhs = entry.lhs })
+    end
+  end
+
+  local overlaps = {}
+  for review_key, lhs in pairs(M.config.keymaps) do
+    if not NON_DIFF_KEYMAPS[review_key] and type(lhs) == "string" and lhs ~= "" then
+      for _, cm in ipairs(codediff_maps) do
+        if canonical(lhs) == canonical(cm.lhs) then
+          local override = KNOWN_OVERRIDES[review_key]
+          if not (override and override.role == cm.role and override.name == cm.name) then
+            table.insert(
+              overlaps,
+              string.format("keymaps.%s (%s) overlaps codediff %s.%s", review_key, lhs, cm.role, cm.name)
+            )
+          end
+        end
+      end
+    end
+  end
+  table.sort(overlaps)
+
+  if #overlaps > 0 then
+    vim.notify(
+      "review.nvim keymap conflict(s) with codediff.nvim:\n- " .. table.concat(overlaps, "\n- "),
+      vim.log.levels.WARN,
+      { title = "review.nvim" }
+    )
+  end
+  return overlaps
+end
+
 ---@param opts? ReviewConfig
 function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.defaults, opts or {})
+  M.check_codediff_conflicts()
 end
 
 ---@return ReviewConfig
