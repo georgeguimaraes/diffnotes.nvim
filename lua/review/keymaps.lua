@@ -180,10 +180,33 @@ local function show_help()
   help_popup:map("n", "<Esc>", close_help, map_opts)
 end
 
+--- True when bufnr is a diff buffer owned by the session.
+--- Explorer/history panels are intentionally excluded: codediff owns the
+--- keys there (e.g. i/S/R) and review must not shadow them.
+---@param lifecycle table
+---@param tabpage number
 ---@param bufnr number
-local function set_buffer_keymaps(bufnr)
+---@return boolean
+local function is_diff_buffer(lifecycle, tabpage, bufnr)
+  if lifecycle.find_tabpage_by_buffer then
+    -- Matches original/modified/result buffers only, never panel buffers.
+    -- Covers inline layout (same session buffers) and conflict mode.
+    return lifecycle.find_tabpage_by_buffer(bufnr) == tabpage
+  end
+  local orig_buf, mod_buf = lifecycle.get_buffers(tabpage)
+  return bufnr == orig_buf or bufnr == mod_buf
+end
+
+---@param tabpage number
+---@param bufnr number
+local function set_buffer_keymaps(tabpage, bufnr)
   -- Clear existing keymaps first
   clear_buffer_keymaps(bufnr)
+
+  local ok, lifecycle = pcall(require, "codediff.ui.lifecycle")
+  if ok and not is_diff_buffer(lifecycle, tabpage, bufnr) then
+    return
+  end
 
   local cfg = config.get()
   local km = cfg.keymaps
@@ -310,7 +333,7 @@ function M.setup_keymaps(tabpage)
   keymapped_buffers = {}
 
   -- Set keymaps on current buffer
-  set_buffer_keymaps(vim.api.nvim_get_current_buf())
+  set_buffer_keymaps(tabpage, vim.api.nvim_get_current_buf())
 
   -- Set up autocmd to apply keymaps when entering any buffer in this tabpage
   vim.api.nvim_create_autocmd("BufEnter", {
@@ -318,7 +341,8 @@ function M.setup_keymaps(tabpage)
     callback = function()
       if vim.api.nvim_get_current_tabpage() ~= tabpage then return end
       if not lifecycle.get_session(tabpage) then return end
-      set_buffer_keymaps(vim.api.nvim_get_current_buf())
+      -- Panel buffers are skipped inside set_buffer_keymaps
+      set_buffer_keymaps(tabpage, vim.api.nvim_get_current_buf())
     end,
   })
 end
@@ -345,6 +369,7 @@ M._test = {
   format_key = format_key,
   add_section = add_section,
   is_enabled = is_enabled,
+  is_diff_buffer = is_diff_buffer,
 }
 
 return M
