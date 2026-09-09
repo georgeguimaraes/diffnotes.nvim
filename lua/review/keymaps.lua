@@ -183,6 +183,8 @@ local function show_help()
   add_section(nav_entries, "Navigation", lines, max_key_width)
   add_section(action_entries, "Actions", lines, max_key_width)
   table.insert(lines, "")
+  table.insert(lines, "  q overrides codediff's quit here: export & close")
+  table.insert(lines, "")
 
   local max_line_width = 0
   for _, line in ipairs(lines) do
