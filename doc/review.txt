@@ -179,10 +179,19 @@ ACTIONS                                               *review-keymaps-actions*
     `S`           Send to sidekick.nvim                  |n|
     `<C-r>`       Clear all comments                     |n|
     `R`           Toggle readonly/edit mode               |n|
-    `q`           Export & close review                   |n|
+    `q`           Export & close review (overrides        |n|
+                  codediff's quit on diff panes)         |n|
     `?`           Show help popup                         |n|
-    `t`           Toggle layout (side-by-side/inline)     |n|
-    `g?`          Show codediff help                      |n|
+
+COEXISTENCE WITH CODEDIFF                      *review-keymaps-codediff*
+
+Review maps are buffer-local to the diff panes only; explorer/history
+panels keep codediff's own keys (`i`, `S`, `R`, `<CR>`, folds, ...).
+On diff panes, `q` is review's export-and-close and deliberately
+overrides codediff's quit-without-export (claimed at higher priority
+in the session keymap registry). Codediff natives worth knowing:
+`t` (layout), `g?` (help), `]c`/`[c` (hunks), `]f`/`[f` (files),
+`do`/`dp` (get/put change). Custom overlaps warn at setup().
 
 POPUP                                                 *review-keymaps-popup*
 

@@ -72,7 +72,7 @@ For multi-line comments, visually select the range first then press `i`. For fil
 
 Use `]n` and `[n` to jump between comments, `e` to edit one, `d` to delete. Press `c` to see a list of all comments across files and jump to any of them.
 
-When you're done, press `q` to close the review. This automatically copies all your comments to the clipboard as structured markdown and shows a preview. Paste it into Claude Code, sidekick.nvim (`S`), or wherever you're chatting with an AI. The format looks like this:
+When you're done, press `q` to close the review. This automatically copies all your comments to the clipboard as structured markdown and shows a preview. (On diff panes `q` is review's export-and-close, overriding codediff's plain quit.) Paste it into Claude Code, sidekick.nvim (`S`), or wherever you're chatting with an AI. The format looks like this:
 
 ```
 1. **[ISSUE]** `src/api.ts:23` - This endpoint doesn't handle errors
@@ -82,6 +82,10 @@ When you're done, press `q` to close the review. This automatically copies all y
 Lines prefixed with `~` refer to the old (left) side of the diff. Comments persist per branch, so you can close Neovim and come back to the same review later. Sessions auto-expire after 7 days.
 
 ## Keybindings (in diff view)
+
+Review's maps below are buffer-local to the diff panes only. The
+file explorer/history panels keep codediff's own keys (`i`, `S`, `R`,
+`<CR>`, folds, …) — review never shadows them there.
 
 **Readonly mode** (default):
 | Key | Action |
@@ -99,9 +103,23 @@ Lines prefixed with `~` refer to the old (left) side of the diff. Comments persi
 | `C` | Export to clipboard and show preview |
 | `S` | Send comments to sidekick.nvim |
 | `<C-r>` | Clear all comments |
-| `q` | Close and export comments to clipboard |
+| `q` | Export & close review (overrides codediff's quit, see below) |
+| `?` | Show review help |
+
+**Codediff's own keys** (still available on diff panes — learn these too):
+| Key | Action |
+|-----|--------|
 | `t` | Toggle side-by-side/inline layout |
 | `g?` | Show codediff help |
+| `]c` / `[c` | Next/previous hunk |
+| `]f` / `[f` | Next/previous file |
+| `do` / `dp` | Get/put change (like vimdiff) |
+
+**About `q`:** on diff panes, `q` is review's export-and-close — it
+deliberately overrides codediff's quit-without-export so `:Review`
+sessions always export. On file panels (where review installs no maps),
+`q` remains codediff's plain close. If you customize either side's maps
+into a silent overlap, `setup()` warns you immediately.
 
 **Edit mode** (when `readonly = false`):
 | Key | Action |
@@ -116,7 +134,7 @@ Lines prefixed with `~` refer to the old (left) side of the diff. Comments persi
 |-----|--------|
 | `Enter` | Insert newline (multi-line comments supported) |
 | `Ctrl+s` | Submit comment |
-| `Tab` | Cycle comment type |
+| `Tab` | Cycle comment type (separate popup buffer — no conflict with next-file `<Tab>`) |
 | `Esc` / `q` | Cancel (normal mode) |
 
 ## Configuration
